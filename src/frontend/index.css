@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0.97 0.008 270;
+    --foreground: 0.13 0.025 270;
+    --card: 0.93 0.01 270;
+    --card-foreground: 0.13 0.025 270;
+    --popover: 0.95 0.008 270;
+    --popover-foreground: 0.13 0.025 270;
+    --primary: 0.58 0.22 270;
+    --primary-foreground: 0.98 0.005 270;
+    --secondary: 0.90 0.01 270;
+    --secondary-foreground: 0.20 0.03 270;
+    --muted: 0.90 0.01 270;
+    --muted-foreground: 0.50 0.02 270;
+    --accent: 0.72 0.20 195;
+    --accent-foreground: 0.10 0.02 195;
+    --destructive: 0.58 0.22 25;
+    --destructive-foreground: 0.98 0.005 0;
+    --border: 0.83 0.015 270;
+    --input: 0.83 0.015 270;
+    --ring: 0.58 0.22 270;
+    --radius: 0.75rem;
+    --chart-1: 0.58 0.22 270;
+    --chart-2: 0.72 0.20 195;
+    --chart-3: 0.62 0.22 310;
+    --chart-4: 0.70 0.18 160;
+    --chart-5: 0.65 0.20 30;
+    --sidebar: 0.95 0.008 270;
+    --sidebar-foreground: 0.13 0.025 270;
+    --sidebar-primary: 0.58 0.22 270;
+    --sidebar-primary-foreground: 0.98 0.005 270;
+    --sidebar-accent: 0.90 0.01 270;
+    --sidebar-accent-foreground: 0.20 0.03 270;
+    --sidebar-border: 0.83 0.015 270;
+    --sidebar-ring: 0.58 0.22 270;
+    /* Portfolio-specific tokens */
+    --indigo: 0.58 0.22 270;
+    --cyan: 0.72 0.20 195;
+    --purple: 0.62 0.22 310;
+    --glass-bg: 0.97 0.008 270 / 0.7;
+    --glow-indigo: oklch(0.58 0.22 270 / 0.35);
+    --glow-cyan: oklch(0.72 0.20 195 / 0.35);
+    --glow-purple: oklch(0.62 0.22 310 / 0.35);
+  }
+
+  .dark {
+    --background: 0.07 0.012 280;
+    --foreground: 0.94 0.01 270;
+    --card: 0.11 0.015 275;
+    --card-foreground: 0.94 0.01 270;
+    --popover: 0.10 0.015 275;
+    --popover-foreground: 0.94 0.01 270;
+    --primary: 0.65 0.22 270;
+    --primary-foreground: 0.07 0.012 280;
+    --secondary: 0.16 0.02 275;
+    --secondary-foreground: 0.87 0.01 270;
+    --muted: 0.16 0.02 275;
+    --muted-foreground: 0.62 0.02 270;
+    --accent: 0.72 0.20 195;
+    --accent-foreground: 0.07 0.012 280;
+    --destructive: 0.58 0.22 25;
+    --destructive-foreground: 0.98 0.005 0;
+    --border: 0.20 0.025 275;
+    --input: 0.20 0.025 275;
+    --ring: 0.65 0.22 270;
+    --chart-1: 0.65 0.22 270;
+    --chart-2: 0.72 0.20 195;
+    --chart-3: 0.65 0.22 310;
+    --chart-4: 0.70 0.18 160;
+    --chart-5: 0.70 0.20 30;
+    --sidebar: 0.10 0.015 275;
+    --sidebar-foreground: 0.94 0.01 270;
+    --sidebar-primary: 0.65 0.22 270;
+    --sidebar-primary-foreground: 0.07 0.012 280;
+    --sidebar-accent: 0.16 0.02 275;
+    --sidebar-accent-foreground: 0.87 0.01 270;
+    --sidebar-border: 0.20 0.025 275;
+    --sidebar-ring: 0.65 0.22 270;
+    --glass-bg: 0.07 0.012 280 / 0.6;
+    --glow-indigo: oklch(0.65 0.22 270 / 0.4);
+    --glow-cyan: oklch(0.72 0.20 195 / 0.4);
+    --glow-purple: oklch(0.65 0.22 310 / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: oklch(var(--card) / 0.6);
+    border: 1px solid oklch(var(--border) / 0.5);
+  }
+  .glass-strong {
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    background: oklch(var(--card) / 0.75);
+    border: 1px solid oklch(var(--border) / 0.6);
+  }
+  .glow-indigo {
+    box-shadow: 0 0 30px var(--glow-indigo), 0 0 60px var(--glow-indigo);
+  }
+  .glow-cyan {
+    box-shadow: 0 0 30px var(--glow-cyan), 0 0 60px var(--glow-cyan);
+  }
+  .glow-purple {
+    box-shadow: 0 0 30px var(--glow-purple), 0 0 60px var(--glow-purple);
+  }
+  .text-gradient-indigo {
+    background: linear-gradient(135deg, oklch(0.65 0.22 270), oklch(0.72 0.20 195));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-purple {
+    background: linear-gradient(135deg, oklch(0.65 0.22 310), oklch(0.65 0.22 270));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-blob {
+  animation: blob 8s ease-in-out infinite;
+}
+
+.animate-blob-delay-2 {
+  animation: blob 10s ease-in-out infinite 2s;
+}
+
+.animate-blob-delay-4 {
+  animation: blob 9s ease-in-out infinite 4s;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: oklch(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--primary) / 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--primary));
+}
