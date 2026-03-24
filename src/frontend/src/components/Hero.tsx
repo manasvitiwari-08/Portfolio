@@ -188,38 +188,28 @@ export default function Hero() {
           {/* Right: photo */}
           <motion.div variants={item} className="flex-shrink-0">
             <div className="relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80">
-              {/* Glow ring */}
+              {/* Subtle glow */}
               <div
-                className="absolute inset-0 rounded-full blur-2xl opacity-40"
+                className="absolute inset-0 rounded-2xl blur-2xl opacity-30"
                 style={{
                   background:
                     "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310))",
                 }}
               />
-              <div
-                className="relative w-full h-full rounded-full p-1"
-                style={{
-                  background:
-                    "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310), oklch(0.72 0.20 195))",
-                }}
-              >
+              <div className="relative w-full h-full rounded-2xl overflow-hidden">
                 <img
                   src="/photo.jpg"
                   alt="Manasvi Tiwari"
-                  className="w-full h-full rounded-full object-cover"
+                  className="w-full h-full object-cover object-top"
                   onError={(e) => {
-                    // fallback to initials if image not found
                     (e.currentTarget as HTMLImageElement).style.display = "none";
                     (e.currentTarget.nextElementSibling as HTMLElement)!.style.display = "flex";
                   }}
                 />
                 {/* Fallback initials */}
                 <div
-                  className="absolute inset-1 rounded-full hidden items-center justify-center text-4xl font-bold text-white"
-                  style={{
-                    background: "oklch(0.15 0.02 270)",
-                    display: "none",
-                  }}
+                  className="absolute inset-0 hidden items-center justify-center text-4xl font-bold text-white"
+                  style={{ background: "oklch(0.15 0.02 270)", display: "none" }}
                 >
                   MT
                 </div>
