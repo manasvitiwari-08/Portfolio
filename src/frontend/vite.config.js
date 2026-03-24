@@ -14,7 +14,6 @@ process.env.STORAGE_GATEWAY_URL =
 
 export default defineConfig({
   logLevel: "error",
-  base: "/Portfolio/",
   build: {
     emptyOutDir: true,
     sourcemap: false,

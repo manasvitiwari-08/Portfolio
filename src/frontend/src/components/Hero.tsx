@@ -46,7 +46,7 @@ const socials = [
   },
   {
     icon: FiPhone,
-    href: "tel:+1234567890",
+    href: "tel:+917470422525",
     label: "Phone",
     color: "hover:text-green-400",
   },
@@ -58,10 +58,7 @@ export default function Hero() {
   };
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = "/manasvi fullstack cv.pdf";
-    a.download = "Manasvi_Tiwari_Resume.pdf";
-    a.click();
+    window.open("https://drive.google.com/uc?export=download&id=1p-d76P5xS2FHdEfeaZptkI_Gjpxb_Z34", "_blank");
   };
 
   return (
