@@ -1,9 +1,6 @@
-var __defProp = Object.defineProperty;
 var __typeError = (msg) => {
   throw TypeError(msg);
 };
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
 var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
 var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
@@ -17,7 +14,26 @@ var __privateWrapper = (obj, member, setter, getter) => ({
     return __privateGet(obj, member, getter);
   }
 });
-var _provider, _providerCalled, _a, _focused, _cleanup, _setup, _b, _online, _cleanup2, _setup2, _c, _gcTimeout, _d, _initialState, _revertState, _cache, _client, _retryer, _defaultOptions, _abortSignalConsumed, _Query_instances, dispatch_fn, _e, _client2, _observers, _mutationCache, _retryer2, _Mutation_instances, dispatch_fn2, _f, _mutations, _scopes, _mutationId, _g, _queries, _h, _queryCache, _mutationCache2, _defaultOptions2, _queryDefaults, _mutationDefaults, _mountCount, _unsubscribeFocus, _unsubscribeOnline, _i, _rawKey, _derKey, _publicKey, _privateKey, _inner, _delegation, _options;
+var _provider, _providerCalled, _a, _focused, _cleanup, _setup, _b, _online, _cleanup2, _setup2, _c, _gcTimeout, _d, _initialState, _revertState, _cache, _client, _retryer, _defaultOptions, _abortSignalConsumed, _Query_instances, dispatch_fn, _e, _client2, _observers, _mutationCache, _retryer2, _Mutation_instances, dispatch_fn2, _f, _mutations, _scopes, _mutationId, _g, _queries, _h, _queryCache, _mutationCache2, _defaultOptions2, _queryDefaults, _mutationDefaults, _mountCount, _unsubscribeFocus, _unsubscribeOnline, _i;
+function _mergeNamespaces(n, m) {
+  for (var i = 0; i < m.length; i++) {
+    const e = m[i];
+    if (typeof e !== "string" && !Array.isArray(e)) {
+      for (const k in e) {
+        if (k !== "default" && !(k in n)) {
+          const d = Object.getOwnPropertyDescriptor(e, k);
+          if (d) {
+            Object.defineProperty(n, k, d.get ? d : {
+              enumerable: true,
+              get: () => e[k]
+            });
+          }
+        }
+      }
+    }
+  }
+  return Object.freeze(Object.defineProperty(n, Symbol.toStringTag, { value: "Module" }));
+}
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) {
@@ -267,10 +283,11 @@ function partialMatchKey(a, b) {
   return false;
 }
 var hasOwn = Object.prototype.hasOwnProperty;
-function replaceEqualDeep(a, b) {
+function replaceEqualDeep(a, b, depth = 0) {
   if (a === b) {
     return a;
   }
+  if (depth > 500) return b;
   const array = isPlainArray(a) && isPlainArray(b);
   if (!array && !(isPlainObject(a) && isPlainObject(b))) return b;
   const aItems = array ? a : Object.keys(a);
@@ -292,7 +309,7 @@ function replaceEqualDeep(a, b) {
       copy[key] = bItem;
       continue;
     }
-    const v2 = replaceEqualDeep(aItem, bItem);
+    const v2 = replaceEqualDeep(aItem, bItem, depth + 1);
     copy[key] = v2;
     if (v2 === aItem) equalItems++;
   }
@@ -345,7 +362,7 @@ function addToStart(items, item2, max = 0) {
   const newItems = [item2, ...items];
   return max && newItems.length > max ? newItems.slice(0, -1) : newItems;
 }
-var skipToken = Symbol();
+var skipToken = /* @__PURE__ */ Symbol();
 function ensureQueryFn(options, fetchOptions) {
   if (!options.queryFn && (fetchOptions == null ? void 0 : fetchOptions.initialPromise)) {
     return () => fetchOptions.initialPromise;
@@ -354,6 +371,27 @@ function ensureQueryFn(options, fetchOptions) {
     return () => Promise.reject(new Error(`Missing queryFn: '${options.queryHash}'`));
   }
   return options.queryFn;
+}
+function addConsumeAwareSignal(object, getSignal, onCancelled) {
+  let consumed = false;
+  let signal;
+  Object.defineProperty(object, "signal", {
+    enumerable: true,
+    get: () => {
+      signal ?? (signal = getSignal());
+      if (consumed) {
+        return signal;
+      }
+      consumed = true;
+      if (signal.aborted) {
+        onCancelled();
+      } else {
+        signal.addEventListener("abort", onCancelled, { once: true });
+      }
+      return signal;
+    }
+  });
+  return object;
 }
 var FocusManager = (_b = class extends Subscribable {
   constructor() {
@@ -765,10 +803,9 @@ var Query = (_e = class extends Removable {
     if (this.state && this.state.data === void 0) {
       const defaultState = getDefaultState$1(this.options);
       if (defaultState.data !== void 0) {
-        this.setData(defaultState.data, {
-          updatedAt: defaultState.dataUpdatedAt,
-          manual: true
-        });
+        this.setState(
+          successState(defaultState.data, defaultState.dataUpdatedAt)
+        );
         __privateSet(this, _initialState, defaultState);
       }
     }
@@ -889,7 +926,7 @@ var Query = (_e = class extends Removable {
   }
   async fetch(options, fetchOptions) {
     var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2, _j, _k, _l;
-    if (this.state.fetchStatus !== "idle" && // If the promise in the retyer is already rejected, we have to definitely
+    if (this.state.fetchStatus !== "idle" && // If the promise in the retryer is already rejected, we have to definitely
     // re-start the fetch; there is a chance that the query is still in a
     // pending state when that happens
     ((_a2 = __privateGet(this, _retryer)) == null ? void 0 : _a2.status()) !== "rejected") {
@@ -1059,12 +1096,8 @@ var Query = (_e = class extends Removable {
       case "success":
         const newState = {
           ...state,
-          data: action.data,
+          ...successState(action.data, action.dataUpdatedAt),
           dataUpdateCount: state.dataUpdateCount + 1,
-          dataUpdatedAt: action.dataUpdatedAt ?? Date.now(),
-          error: null,
-          isInvalidated: false,
-          status: "success",
           ...!action.manual && {
             fetchStatus: "idle",
             fetchFailureCount: 0,
@@ -1083,7 +1116,10 @@ var Query = (_e = class extends Removable {
           fetchFailureCount: state.fetchFailureCount + 1,
           fetchFailureReason: error,
           fetchStatus: "idle",
-          status: "error"
+          status: "error",
+          // flag existing data as invalidated if we get a background error
+          // note that "no data" always means stale so we can set unconditionally here
+          isInvalidated: true
         };
       case "invalidate":
         return {
@@ -1114,6 +1150,15 @@ function fetchState(data, options) {
       error: null,
       status: "pending"
     }
+  };
+}
+function successState(data, dataUpdatedAt) {
+  return {
+    data,
+    dataUpdatedAt: dataUpdatedAt ?? Date.now(),
+    error: null,
+    isInvalidated: false,
+    status: "success"
   };
 }
 function getDefaultState$1(options) {
@@ -1148,19 +1193,11 @@ function infiniteQueryBehavior(pages) {
       const fetchFn = async () => {
         let cancelled = false;
         const addSignalProperty = (object) => {
-          Object.defineProperty(object, "signal", {
-            enumerable: true,
-            get: () => {
-              if (context.signal.aborted) {
-                cancelled = true;
-              } else {
-                context.signal.addEventListener("abort", () => {
-                  cancelled = true;
-                });
-              }
-              return context.signal;
-            }
-          });
+          addConsumeAwareSignal(
+            object,
+            () => context.signal,
+            () => cancelled = true
+          );
         };
         const queryFn = ensureQueryFn(context.options, context.fetchOptions);
         const fetchPage = async (data, param, previous) => {
@@ -1304,7 +1341,7 @@ var Mutation = (_f = class extends Removable {
     this.execute(this.state.variables);
   }
   async execute(variables) {
-    var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t2;
+    var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2, _j, _k, _l, _m, _n, _o, _p, _q, _r;
     const onContinue = () => {
       __privateMethod(this, _Mutation_instances, dispatch_fn2).call(this, { type: "continue" });
     };
@@ -1339,14 +1376,15 @@ var Mutation = (_f = class extends Removable {
         onContinue();
       } else {
         __privateMethod(this, _Mutation_instances, dispatch_fn2).call(this, { type: "pending", variables, isPaused });
-        await ((_b2 = (_a2 = __privateGet(this, _mutationCache).config).onMutate) == null ? void 0 : _b2.call(
+        if (__privateGet(this, _mutationCache).config.onMutate) {
+          await __privateGet(this, _mutationCache).config.onMutate(
+            variables,
+            this,
+            mutationFnContext
+          );
+        }
+        const context = await ((_b2 = (_a2 = this.options).onMutate) == null ? void 0 : _b2.call(
           _a2,
-          variables,
-          this,
-          mutationFnContext
-        ));
-        const context = await ((_d2 = (_c2 = this.options).onMutate) == null ? void 0 : _d2.call(
-          _c2,
           variables,
           mutationFnContext
         ));
@@ -1360,23 +1398,23 @@ var Mutation = (_f = class extends Removable {
         }
       }
       const data = await __privateGet(this, _retryer2).start();
-      await ((_f2 = (_e2 = __privateGet(this, _mutationCache).config).onSuccess) == null ? void 0 : _f2.call(
-        _e2,
+      await ((_d2 = (_c2 = __privateGet(this, _mutationCache).config).onSuccess) == null ? void 0 : _d2.call(
+        _c2,
         data,
         variables,
         this.state.context,
         this,
         mutationFnContext
       ));
-      await ((_h2 = (_g2 = this.options).onSuccess) == null ? void 0 : _h2.call(
-        _g2,
+      await ((_f2 = (_e2 = this.options).onSuccess) == null ? void 0 : _f2.call(
+        _e2,
         data,
         variables,
         this.state.context,
         mutationFnContext
       ));
-      await ((_j = (_i2 = __privateGet(this, _mutationCache).config).onSettled) == null ? void 0 : _j.call(
-        _i2,
+      await ((_h2 = (_g2 = __privateGet(this, _mutationCache).config).onSettled) == null ? void 0 : _h2.call(
+        _g2,
         data,
         null,
         this.state.variables,
@@ -1384,8 +1422,8 @@ var Mutation = (_f = class extends Removable {
         this,
         mutationFnContext
       ));
-      await ((_l = (_k = this.options).onSettled) == null ? void 0 : _l.call(
-        _k,
+      await ((_j = (_i2 = this.options).onSettled) == null ? void 0 : _j.call(
+        _i2,
         data,
         null,
         variables,
@@ -1396,23 +1434,31 @@ var Mutation = (_f = class extends Removable {
       return data;
     } catch (error) {
       try {
-        await ((_n = (_m = __privateGet(this, _mutationCache).config).onError) == null ? void 0 : _n.call(
-          _m,
+        await ((_l = (_k = __privateGet(this, _mutationCache).config).onError) == null ? void 0 : _l.call(
+          _k,
           error,
           variables,
           this.state.context,
           this,
           mutationFnContext
         ));
-        await ((_p = (_o = this.options).onError) == null ? void 0 : _p.call(
-          _o,
+      } catch (e) {
+        void Promise.reject(e);
+      }
+      try {
+        await ((_n = (_m = this.options).onError) == null ? void 0 : _n.call(
+          _m,
           error,
           variables,
           this.state.context,
           mutationFnContext
         ));
-        await ((_r = (_q = __privateGet(this, _mutationCache).config).onSettled) == null ? void 0 : _r.call(
-          _q,
+      } catch (e) {
+        void Promise.reject(e);
+      }
+      try {
+        await ((_p = (_o = __privateGet(this, _mutationCache).config).onSettled) == null ? void 0 : _p.call(
+          _o,
           void 0,
           error,
           this.state.variables,
@@ -1420,18 +1466,23 @@ var Mutation = (_f = class extends Removable {
           this,
           mutationFnContext
         ));
-        await ((_t2 = (_s = this.options).onSettled) == null ? void 0 : _t2.call(
-          _s,
+      } catch (e) {
+        void Promise.reject(e);
+      }
+      try {
+        await ((_r = (_q = this.options).onSettled) == null ? void 0 : _r.call(
+          _q,
           void 0,
           error,
           variables,
           this.state.context,
           mutationFnContext
         ));
-        throw error;
-      } finally {
-        __privateMethod(this, _Mutation_instances, dispatch_fn2).call(this, { type: "error", error });
+      } catch (e) {
+        void Promise.reject(e);
       }
+      __privateMethod(this, _Mutation_instances, dispatch_fn2).call(this, { type: "error", error });
+      throw error;
     } finally {
       __privateGet(this, _mutationCache).runNext(this);
     }
@@ -2019,7 +2070,7 @@ var react_production = {};
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-var REACT_ELEMENT_TYPE$1 = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE$2 = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE$1 = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE$1 = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE$1 = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE$1 = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE$1 = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE$1 = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE$1 = Symbol.for("react.suspense"), REACT_MEMO_TYPE$1 = Symbol.for("react.memo"), REACT_LAZY_TYPE$1 = Symbol.for("react.lazy"), MAYBE_ITERATOR_SYMBOL$1 = Symbol.iterator;
+var REACT_ELEMENT_TYPE$1 = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE$2 = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE$1 = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE$1 = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE$1 = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE$1 = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE$1 = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE$1 = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE$1 = Symbol.for("react.suspense"), REACT_MEMO_TYPE$1 = Symbol.for("react.memo"), REACT_LAZY_TYPE$2 = Symbol.for("react.lazy"), MAYBE_ITERATOR_SYMBOL$1 = Symbol.iterator;
 function getIteratorFn$1(maybeIterable) {
   if (null === maybeIterable || "object" !== typeof maybeIterable) return null;
   maybeIterable = MAYBE_ITERATOR_SYMBOL$1 && maybeIterable[MAYBE_ITERATOR_SYMBOL$1] || maybeIterable["@@iterator"];
@@ -2067,13 +2118,13 @@ pureComponentPrototype.constructor = PureComponent;
 assign$1(pureComponentPrototype, Component.prototype);
 pureComponentPrototype.isPureReactComponent = true;
 var isArrayImpl$1 = Array.isArray, ReactSharedInternals$2 = { H: null, A: null, T: null, S: null, V: null }, hasOwnProperty$1 = Object.prototype.hasOwnProperty;
-function ReactElement(type, key, self2, source, owner, props) {
-  self2 = props.ref;
+function ReactElement(type, key, self, source, owner, props) {
+  self = props.ref;
   return {
     $$typeof: REACT_ELEMENT_TYPE$1,
     type,
     key,
-    ref: void 0 !== self2 ? self2 : null,
+    ref: void 0 !== self ? self : null,
     props
   };
 }
@@ -2143,7 +2194,7 @@ function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
           case REACT_PORTAL_TYPE$2:
             invokeCallback = true;
             break;
-          case REACT_LAZY_TYPE$1:
+          case REACT_LAZY_TYPE$2:
             return invokeCallback = children._init, mapIntoArray(
               invokeCallback(children._payload),
               array,
@@ -2352,16 +2403,16 @@ react_production.forwardRef = function(render) {
 react_production.isValidElement = isValidElement;
 react_production.lazy = function(ctor) {
   return {
-    $$typeof: REACT_LAZY_TYPE$1,
+    $$typeof: REACT_LAZY_TYPE$2,
     _payload: { _status: -1, _result: ctor },
     _init: lazyInitializer
   };
 };
-react_production.memo = function(type, compare2) {
+react_production.memo = function(type, compare) {
   return {
     $$typeof: REACT_MEMO_TYPE$1,
     type,
-    compare: void 0 === compare2 ? null : compare2
+    compare: void 0 === compare ? null : compare
   };
 };
 react_production.startTransition = function(scope) {
@@ -2442,12 +2493,16 @@ react_production.useSyncExternalStore = function(subscribe, getSnapshot, getServ
 react_production.useTransition = function() {
   return ReactSharedInternals$2.H.useTransition();
 };
-react_production.version = "19.1.1";
+react_production.version = "19.1.5";
 {
   react.exports = react_production;
 }
 var reactExports = react.exports;
 const React$2 = /* @__PURE__ */ getDefaultExportFromCjs(reactExports);
+const React$3 = /* @__PURE__ */ _mergeNamespaces({
+  __proto__: null,
+  default: React$2
+}, [reactExports]);
 var QueryClientContext = reactExports.createContext(
   void 0
 );
@@ -2476,13 +2531,13 @@ var scheduler_production = {};
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-(function(exports) {
+(function(exports$1) {
   function push2(heap, node) {
     var index2 = heap.length;
     heap.push(node);
     a: for (; 0 < index2; ) {
       var parentIndex = index2 - 1 >>> 1, parent = heap[parentIndex];
-      if (0 < compare2(parent, node))
+      if (0 < compare(parent, node))
         heap[parentIndex] = node, heap[index2] = parent, index2 = parentIndex;
       else break a;
     }
@@ -2497,28 +2552,28 @@ var scheduler_production = {};
       heap[0] = last;
       a: for (var index2 = 0, length = heap.length, halfLength = length >>> 1; index2 < halfLength; ) {
         var leftIndex = 2 * (index2 + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
-        if (0 > compare2(left, last))
-          rightIndex < length && 0 > compare2(right, left) ? (heap[index2] = right, heap[rightIndex] = last, index2 = rightIndex) : (heap[index2] = left, heap[leftIndex] = last, index2 = leftIndex);
-        else if (rightIndex < length && 0 > compare2(right, last))
+        if (0 > compare(left, last))
+          rightIndex < length && 0 > compare(right, left) ? (heap[index2] = right, heap[rightIndex] = last, index2 = rightIndex) : (heap[index2] = left, heap[leftIndex] = last, index2 = leftIndex);
+        else if (rightIndex < length && 0 > compare(right, last))
           heap[index2] = right, heap[rightIndex] = last, index2 = rightIndex;
         else break a;
       }
     }
     return first;
   }
-  function compare2(a, b) {
+  function compare(a, b) {
     var diff = a.sortIndex - b.sortIndex;
     return 0 !== diff ? diff : a.id - b.id;
   }
-  exports.unstable_now = void 0;
+  exports$1.unstable_now = void 0;
   if ("object" === typeof performance && "function" === typeof performance.now) {
     var localPerformance = performance;
-    exports.unstable_now = function() {
+    exports$1.unstable_now = function() {
       return localPerformance.now();
     };
   } else {
     var localDate = Date, initialTime = localDate.now();
-    exports.unstable_now = function() {
+    exports$1.unstable_now = function() {
       return localDate.now() - initialTime;
     };
   }
@@ -2545,12 +2600,12 @@ var scheduler_production = {};
   }
   var isMessageLoopRunning = false, taskTimeoutID = -1, frameInterval = 5, startTime = -1;
   function shouldYieldToHost() {
-    return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
+    return needsPaint ? true : exports$1.unstable_now() - startTime < frameInterval ? false : true;
   }
   function performWorkUntilDeadline() {
     needsPaint = false;
     if (isMessageLoopRunning) {
-      var currentTime = exports.unstable_now();
+      var currentTime = exports$1.unstable_now();
       startTime = currentTime;
       var hasMoreWork = true;
       try {
@@ -2570,7 +2625,7 @@ var scheduler_production = {};
                   var continuationCallback = callback(
                     currentTask.expirationTime <= currentTime
                   );
-                  currentTime = exports.unstable_now();
+                  currentTime = exports$1.unstable_now();
                   if ("function" === typeof continuationCallback) {
                     currentTask.callback = continuationCallback;
                     advanceTimers(currentTime);
@@ -2620,27 +2675,27 @@ var scheduler_production = {};
     };
   function requestHostTimeout(callback, ms) {
     taskTimeoutID = localSetTimeout(function() {
-      callback(exports.unstable_now());
+      callback(exports$1.unstable_now());
     }, ms);
   }
-  exports.unstable_IdlePriority = 5;
-  exports.unstable_ImmediatePriority = 1;
-  exports.unstable_LowPriority = 4;
-  exports.unstable_NormalPriority = 3;
-  exports.unstable_Profiling = null;
-  exports.unstable_UserBlockingPriority = 2;
-  exports.unstable_cancelCallback = function(task) {
+  exports$1.unstable_IdlePriority = 5;
+  exports$1.unstable_ImmediatePriority = 1;
+  exports$1.unstable_LowPriority = 4;
+  exports$1.unstable_NormalPriority = 3;
+  exports$1.unstable_Profiling = null;
+  exports$1.unstable_UserBlockingPriority = 2;
+  exports$1.unstable_cancelCallback = function(task) {
     task.callback = null;
   };
-  exports.unstable_forceFrameRate = function(fps) {
+  exports$1.unstable_forceFrameRate = function(fps) {
     0 > fps || 125 < fps ? console.error(
       "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
     ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
   };
-  exports.unstable_getCurrentPriorityLevel = function() {
+  exports$1.unstable_getCurrentPriorityLevel = function() {
     return currentPriorityLevel;
   };
-  exports.unstable_next = function(eventHandler) {
+  exports$1.unstable_next = function(eventHandler) {
     switch (currentPriorityLevel) {
       case 1:
       case 2:
@@ -2658,10 +2713,10 @@ var scheduler_production = {};
       currentPriorityLevel = previousPriorityLevel;
     }
   };
-  exports.unstable_requestPaint = function() {
+  exports$1.unstable_requestPaint = function() {
     needsPaint = true;
   };
-  exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
+  exports$1.unstable_runWithPriority = function(priorityLevel, eventHandler) {
     switch (priorityLevel) {
       case 1:
       case 2:
@@ -2680,8 +2735,8 @@ var scheduler_production = {};
       currentPriorityLevel = previousPriorityLevel;
     }
   };
-  exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
-    var currentTime = exports.unstable_now();
+  exports$1.unstable_scheduleCallback = function(priorityLevel, callback, options) {
+    var currentTime = exports$1.unstable_now();
     "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
     switch (priorityLevel) {
       case 1:
@@ -2711,8 +2766,8 @@ var scheduler_production = {};
     options > currentTime ? (priorityLevel.sortIndex = options, push2(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push2(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
     return priorityLevel;
   };
-  exports.unstable_shouldYield = shouldYieldToHost;
-  exports.unstable_wrapCallback = function(callback) {
+  exports$1.unstable_shouldYield = shouldYieldToHost;
+  exports$1.unstable_wrapCallback = function(callback) {
     var parentPriorityLevel = currentPriorityLevel;
     return function() {
       var previousPriorityLevel = currentPriorityLevel;
@@ -2880,7 +2935,7 @@ reactDom_production.useFormState = function(action, initialState, permalink) {
 reactDom_production.useFormStatus = function() {
   return ReactSharedInternals$1.H.useHostTransitionStatus();
 };
-reactDom_production.version = "19.1.1";
+reactDom_production.version = "19.1.5";
 function checkDCE$1() {
   if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
     return;
@@ -3020,7 +3075,7 @@ function findCurrentHostFiberImpl(node) {
   }
   return null;
 }
-var assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = Symbol.for("react.element"), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_PROVIDER_TYPE = Symbol.for("react.provider"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy");
+var assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = Symbol.for("react.element"), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_PROVIDER_TYPE = Symbol.for("react.provider"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE$1 = Symbol.for("react.lazy");
 var REACT_ACTIVITY_TYPE = Symbol.for("react.activity");
 var REACT_MEMO_CACHE_SENTINEL = Symbol.for("react.memo_cache_sentinel");
 var MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
@@ -3064,7 +3119,7 @@ function getComponentNameFromType(type) {
         return type;
       case REACT_MEMO_TYPE:
         return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
-      case REACT_LAZY_TYPE:
+      case REACT_LAZY_TYPE$1:
         innerType = type._payload;
         type = type._init;
         try {
@@ -4686,7 +4741,7 @@ function createFiberFromTypeAndProps(type, key, pendingProps, owner, mode, lanes
             case REACT_MEMO_TYPE:
               fiberTag = 14;
               break a;
-            case REACT_LAZY_TYPE:
+            case REACT_LAZY_TYPE$1:
               fiberTag = 16;
               owner = null;
               break a;
@@ -5531,7 +5586,7 @@ function useThenable(thenable) {
   null === (null === workInProgressHook ? index2.memoizedState : workInProgressHook.next) && (index2 = index2.alternate, ReactSharedInternals.H = null === index2 || null === index2.memoizedState ? HooksDispatcherOnMount : HooksDispatcherOnUpdate);
   return thenable;
 }
-function use(usable) {
+function use$1(usable) {
   if (null !== usable && "object" === typeof usable) {
     if ("function" === typeof usable.then) return useThenable(usable);
     if (usable.$$typeof === REACT_CONTEXT_TYPE) return readContext(usable);
@@ -6273,7 +6328,7 @@ function entangleTransitionUpdate(root2, queue, lane) {
 }
 var ContextOnlyDispatcher = {
   readContext,
-  use,
+  use: use$1,
   useCallback: throwInvalidHookError,
   useContext: throwInvalidHookError,
   useEffect: throwInvalidHookError,
@@ -6297,7 +6352,7 @@ var ContextOnlyDispatcher = {
   useCacheRefresh: throwInvalidHookError
 }, HooksDispatcherOnMount = {
   readContext,
-  use,
+  use: use$1,
   useCallback: function(callback, deps) {
     mountWorkInProgressHook().memoizedState = [
       callback,
@@ -6473,7 +6528,7 @@ var ContextOnlyDispatcher = {
   }
 }, HooksDispatcherOnUpdate = {
   readContext,
-  use,
+  use: use$1,
   useCallback: updateCallback,
   useContext: readContext,
   useEffect: updateEffect,
@@ -6516,7 +6571,7 @@ var ContextOnlyDispatcher = {
   useCacheRefresh: updateRefresh
 }, HooksDispatcherOnRerender = {
   readContext,
-  use,
+  use: use$1,
   useCallback: updateCallback,
   useContext: readContext,
   useEffect: updateEffect,
@@ -6641,7 +6696,7 @@ function createChildReconciler(shouldTrackSideEffects) {
         lanes,
         element.key
       );
-    if (null !== current && (current.elementType === elementType || "object" === typeof elementType && null !== elementType && elementType.$$typeof === REACT_LAZY_TYPE && resolveLazy(elementType) === current.type))
+    if (null !== current && (current.elementType === elementType || "object" === typeof elementType && null !== elementType && elementType.$$typeof === REACT_LAZY_TYPE$1 && resolveLazy(elementType) === current.type))
       return current = useFiber(current, element.props), coerceRef(current, element), current.return = returnFiber, current;
     current = createFiberFromTypeAndProps(
       element.type,
@@ -6698,7 +6753,7 @@ function createChildReconciler(shouldTrackSideEffects) {
             returnFiber.mode,
             lanes
           ), newChild.return = returnFiber, newChild;
-        case REACT_LAZY_TYPE:
+        case REACT_LAZY_TYPE$1:
           var init = newChild._init;
           newChild = init(newChild._payload);
           return createChild(returnFiber, newChild, lanes);
@@ -6732,7 +6787,7 @@ function createChildReconciler(shouldTrackSideEffects) {
           return newChild.key === key ? updateElement(returnFiber, oldFiber, newChild, lanes) : null;
         case REACT_PORTAL_TYPE:
           return newChild.key === key ? updatePortal(returnFiber, oldFiber, newChild, lanes) : null;
-        case REACT_LAZY_TYPE:
+        case REACT_LAZY_TYPE$1:
           return key = newChild._init, newChild = key(newChild._payload), updateSlot(returnFiber, oldFiber, newChild, lanes);
       }
       if (isArrayImpl(newChild) || getIteratorFn(newChild))
@@ -6768,7 +6823,7 @@ function createChildReconciler(shouldTrackSideEffects) {
           return existingChildren = existingChildren.get(
             null === newChild.key ? newIdx : newChild.key
           ) || null, updatePortal(returnFiber, existingChildren, newChild, lanes);
-        case REACT_LAZY_TYPE:
+        case REACT_LAZY_TYPE$1:
           var init = newChild._init;
           newChild = init(newChild._payload);
           return updateFromMap(
@@ -6906,7 +6961,7 @@ function createChildReconciler(shouldTrackSideEffects) {
                     returnFiber = lanes;
                     break a;
                   }
-                } else if (currentFirstChild.elementType === key || "object" === typeof key && null !== key && key.$$typeof === REACT_LAZY_TYPE && resolveLazy(key) === currentFirstChild.type) {
+                } else if (currentFirstChild.elementType === key || "object" === typeof key && null !== key && key.$$typeof === REACT_LAZY_TYPE$1 && resolveLazy(key) === currentFirstChild.type) {
                   deleteRemainingChildren(
                     returnFiber,
                     currentFirstChild.sibling
@@ -6962,7 +7017,7 @@ function createChildReconciler(shouldTrackSideEffects) {
             returnFiber = lanes;
           }
           return placeSingleChild(returnFiber);
-        case REACT_LAZY_TYPE:
+        case REACT_LAZY_TYPE$1:
           return key = newChild._init, newChild = key(newChild._payload), reconcileChildFibersImpl(
             returnFiber,
             currentFirstChild,
@@ -13861,12 +13916,12 @@ ReactDOMHydrationRoot.prototype.unstable_scheduleHydration = function(target) {
   }
 };
 var isomorphicReactPackageVersion$jscomp$inline_1785 = React.version;
-if ("19.1.1" !== isomorphicReactPackageVersion$jscomp$inline_1785)
+if ("19.1.5" !== isomorphicReactPackageVersion$jscomp$inline_1785)
   throw Error(
     formatProdErrorMessage(
       527,
       isomorphicReactPackageVersion$jscomp$inline_1785,
-      "19.1.1"
+      "19.1.5"
     )
   );
 ReactDOMSharedInternals.findDOMNode = function(componentOrElement) {
@@ -13884,10 +13939,10 @@ ReactDOMSharedInternals.findDOMNode = function(componentOrElement) {
 };
 var internals$jscomp$inline_2256 = {
   bundleType: 0,
-  version: "19.1.1",
+  version: "19.1.5",
   rendererPackageName: "react-dom",
   currentDispatcherRef: ReactSharedInternals,
-  reconcilerVersion: "19.1.1"
+  reconcilerVersion: "19.1.5"
 };
 if ("undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__) {
   var hook$jscomp$inline_2257 = __REACT_DEVTOOLS_GLOBAL_HOOK__;
@@ -13954,7 +14009,7 @@ reactDomClient_production.hydrateRoot = function(container2, initialChildren, op
   listenToAllSupportedEvents(container2);
   return new ReactDOMHydrationRoot(initialChildren);
 };
-reactDomClient_production.version = "19.1.1";
+reactDomClient_production.version = "19.1.5";
 function checkDCE() {
   if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
     return;
@@ -14301,8 +14356,8 @@ function useConstant(init) {
   }
   return ref.current;
 }
-const isBrowser$2 = typeof window !== "undefined";
-const useIsomorphicLayoutEffect = isBrowser$2 ? reactExports.useLayoutEffect : reactExports.useEffect;
+const isBrowser$1 = typeof window !== "undefined";
+const useIsomorphicLayoutEffect = isBrowser$1 ? reactExports.useLayoutEffect : reactExports.useEffect;
 const PresenceContext = /* @__PURE__ */ reactExports.createContext(null);
 function addUniqueItem(arr, item2) {
   if (arr.indexOf(item2) === -1)
@@ -14324,7 +14379,7 @@ let invariant = () => {
 };
 const MotionGlobalConfig = {};
 const isNumericalString = (v2) => /^-?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(v2);
-function isObject$1(value) {
+function isObject(value) {
   return typeof value === "object" && value !== null;
 }
 const isZeroValueString = (v2) => /^0[^.\s]+$/u.test(v2);
@@ -14406,7 +14461,7 @@ const reverseEasing = (easing) => (p) => 1 - easing(1 - p);
 const backOut = /* @__PURE__ */ cubicBezier(0.33, 1.53, 0.69, 0.99);
 const backIn = /* @__PURE__ */ reverseEasing(backOut);
 const backInOut = /* @__PURE__ */ mirrorEasing(backIn);
-const anticipate = (p) => (p *= 2) < 1 ? 0.5 * backIn(p) : 0.5 * (2 - Math.pow(2, -10 * (p - 1)));
+const anticipate = (p) => p >= 1 ? 1 : (p *= 2) < 1 ? 0.5 * backIn(p) : 0.5 * (2 - Math.pow(2, -10 * (p - 1)));
 const circIn = (p) => 1 - Math.sin(Math.acos(p));
 const circOut = reverseEasing(circIn);
 const circInOut = mirrorEasing(circIn);
@@ -14488,8 +14543,7 @@ function createRenderStep(runNextFrame, stepName) {
       const queue = addToCurrentFrame ? thisFrame : nextFrame;
       if (keepAlive)
         toKeepAlive.add(callback);
-      if (!queue.has(callback))
-        queue.add(callback);
+      queue.add(callback);
       return callback;
     },
     /**
@@ -14509,7 +14563,9 @@ function createRenderStep(runNextFrame, stepName) {
         return;
       }
       isProcessing = true;
-      [thisFrame, nextFrame] = [nextFrame, thisFrame];
+      const prevFrame = thisFrame;
+      thisFrame = nextFrame;
+      nextFrame = prevFrame;
       thisFrame.forEach(triggerCallback);
       thisFrame.clear();
       isProcessing = false;
@@ -14537,9 +14593,10 @@ function createRenderBatcher(scheduleNextBatch, allowKeepAlive) {
   }, {});
   const { setup, read, resolveKeyframes, preUpdate, update, preRender, render, postRender } = steps;
   const processBatch = () => {
-    const timestamp = MotionGlobalConfig.useManualTiming ? state.timestamp : performance.now();
+    const useManualTiming = MotionGlobalConfig.useManualTiming;
+    const timestamp = useManualTiming ? state.timestamp : performance.now();
     runNextFrame = false;
-    if (!MotionGlobalConfig.useManualTiming) {
+    if (!useManualTiming) {
       state.delta = useDefaultElapsed ? 1e3 / 60 : Math.max(Math.min(timestamp - state.timestamp, maxElapsed), 1);
     }
     state.timestamp = timestamp;
@@ -14768,19 +14825,18 @@ function analyseComplexValue(value) {
     ++i;
     return SPLIT_TOKEN;
   });
-  const split2 = tokenised.split(SPLIT_TOKEN);
-  return { values, split: split2, indexes, types };
+  const split = tokenised.split(SPLIT_TOKEN);
+  return { values, split, indexes, types };
 }
 function parseComplexValue(v2) {
   return analyseComplexValue(v2).values;
 }
-function createTransformer(source) {
-  const { split: split2, types } = analyseComplexValue(source);
-  const numSections = split2.length;
+function buildTransformer({ split, types }) {
+  const numSections = split.length;
   return (v2) => {
     let output = "";
     for (let i = 0; i < numSections; i++) {
-      output += split2[i];
+      output += split[i];
       if (v2[i] !== void 0) {
         const type = types[i];
         if (type === NUMBER_TOKEN) {
@@ -14795,11 +14851,20 @@ function createTransformer(source) {
     return output;
   };
 }
+function createTransformer(source) {
+  return buildTransformer(analyseComplexValue(source));
+}
 const convertNumbersToZero = (v2) => typeof v2 === "number" ? 0 : color.test(v2) ? color.getAnimatableNone(v2) : v2;
+const convertToZero = (value, splitBefore) => {
+  if (typeof value === "number") {
+    return (splitBefore == null ? void 0 : splitBefore.trim().endsWith("/")) ? value : 0;
+  }
+  return convertNumbersToZero(value);
+};
 function getAnimatableNone$1(v2) {
-  const parsed = parseComplexValue(v2);
-  const transformer = createTransformer(v2);
-  return transformer(parsed.map(convertNumbersToZero));
+  const info = analyseComplexValue(v2);
+  const transformer = buildTransformer(info);
+  return transformer(info.values.map((value, i) => convertToZero(value, info.split[i])));
 }
 const complex = {
   test,
@@ -15005,11 +15070,6 @@ function createGeneratorEasing(options, scale2 = 100, createGenerator) {
     duration: /* @__PURE__ */ millisecondsToSeconds(duration)
   };
 }
-const velocitySampleDuration = 5;
-function calcGeneratorVelocity(resolveValue, t, current) {
-  const prevT = Math.max(t - velocitySampleDuration, 0);
-  return velocityPerSecond(current - resolveValue(prevT), t - prevT);
-}
 const springDefaults = {
   // Default spring physics
   stiffness: 100,
@@ -15039,6 +15099,17 @@ const springDefaults = {
   minDamping: 0.05,
   maxDamping: 1
 };
+function calcAngularFreq(undampedFreq, dampingRatio) {
+  return undampedFreq * Math.sqrt(1 - dampingRatio * dampingRatio);
+}
+const rootIterations = 12;
+function approximateRoot(envelope, derivative, initialGuess) {
+  let result = initialGuess;
+  for (let i = 1; i < rootIterations; i++) {
+    result = result - envelope(result) / derivative(result);
+  }
+  return result;
+}
 const safeMin = 1e-3;
 function findSpring({ duration = springDefaults.duration, bounce = springDefaults.bounce, velocity = springDefaults.velocity, mass = springDefaults.mass }) {
   let envelope;
@@ -15094,17 +15165,6 @@ function findSpring({ duration = springDefaults.duration, bounce = springDefault
       duration
     };
   }
-}
-const rootIterations = 12;
-function approximateRoot(envelope, derivative, initialGuess) {
-  let result = initialGuess;
-  for (let i = 1; i < rootIterations; i++) {
-    result = result - envelope(result) / derivative(result);
-  }
-  return result;
-}
-function calcAngularFreq(undampedFreq, dampingRatio) {
-  return undampedFreq * Math.sqrt(1 - dampingRatio * dampingRatio);
 }
 const durationKeys = ["duration", "bounce"];
 const physicsKeys = ["stiffness", "damping", "mass"];
@@ -15167,14 +15227,28 @@ function spring(optionsOrVisualDuration = springDefaults.visualDuration, bounce 
   restSpeed || (restSpeed = isGranularScale ? springDefaults.restSpeed.granular : springDefaults.restSpeed.default);
   restDelta || (restDelta = isGranularScale ? springDefaults.restDelta.granular : springDefaults.restDelta.default);
   let resolveSpring;
+  let resolveVelocity;
+  let angularFreq;
+  let A;
+  let sinCoeff;
+  let cosCoeff;
   if (dampingRatio < 1) {
-    const angularFreq = calcAngularFreq(undampedAngularFreq, dampingRatio);
+    angularFreq = calcAngularFreq(undampedAngularFreq, dampingRatio);
+    A = (initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) / angularFreq;
     resolveSpring = (t) => {
       const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
-      return target - envelope * ((initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) / angularFreq * Math.sin(angularFreq * t) + initialDelta * Math.cos(angularFreq * t));
+      return target - envelope * (A * Math.sin(angularFreq * t) + initialDelta * Math.cos(angularFreq * t));
+    };
+    sinCoeff = dampingRatio * undampedAngularFreq * A + initialDelta * angularFreq;
+    cosCoeff = dampingRatio * undampedAngularFreq * initialDelta - A * angularFreq;
+    resolveVelocity = (t) => {
+      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
+      return envelope * (sinCoeff * Math.sin(angularFreq * t) + cosCoeff * Math.cos(angularFreq * t));
     };
   } else if (dampingRatio === 1) {
     resolveSpring = (t) => target - Math.exp(-undampedAngularFreq * t) * (initialDelta + (initialVelocity + undampedAngularFreq * initialDelta) * t);
+    const C = initialVelocity + undampedAngularFreq * initialDelta;
+    resolveVelocity = (t) => Math.exp(-undampedAngularFreq * t) * (undampedAngularFreq * C * t - initialVelocity);
   } else {
     const dampedAngularFreq = undampedAngularFreq * Math.sqrt(dampingRatio * dampingRatio - 1);
     resolveSpring = (t) => {
@@ -15182,19 +15256,33 @@ function spring(optionsOrVisualDuration = springDefaults.visualDuration, bounce 
       const freqForT = Math.min(dampedAngularFreq * t, 300);
       return target - envelope * ((initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) * Math.sinh(freqForT) + dampedAngularFreq * initialDelta * Math.cosh(freqForT)) / dampedAngularFreq;
     };
+    const P = (initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) / dampedAngularFreq;
+    const sinhCoeff = dampingRatio * undampedAngularFreq * P - initialDelta * dampedAngularFreq;
+    const coshCoeff = dampingRatio * undampedAngularFreq * initialDelta - P * dampedAngularFreq;
+    resolveVelocity = (t) => {
+      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
+      const freqForT = Math.min(dampedAngularFreq * t, 300);
+      return envelope * (sinhCoeff * Math.sinh(freqForT) + coshCoeff * Math.cosh(freqForT));
+    };
   }
   const generator = {
     calculatedDuration: isResolvedFromDuration ? duration || null : null,
+    velocity: (t) => /* @__PURE__ */ secondsToMilliseconds(resolveVelocity(t)),
     next: (t) => {
+      if (!isResolvedFromDuration && dampingRatio < 1) {
+        const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
+        const sin = Math.sin(angularFreq * t);
+        const cos = Math.cos(angularFreq * t);
+        const current2 = target - envelope * (A * sin + initialDelta * cos);
+        const currentVelocity = /* @__PURE__ */ secondsToMilliseconds(envelope * (sinCoeff * sin + cosCoeff * cos));
+        state.done = Math.abs(currentVelocity) <= restSpeed && Math.abs(target - current2) <= restDelta;
+        state.value = state.done ? target : current2;
+        return state;
+      }
       const current = resolveSpring(t);
       if (!isResolvedFromDuration) {
-        let currentVelocity = t === 0 ? initialVelocity : 0;
-        if (dampingRatio < 1) {
-          currentVelocity = t === 0 ? /* @__PURE__ */ secondsToMilliseconds(initialVelocity) : calcGeneratorVelocity(resolveSpring, t, current);
-        }
-        const isBelowVelocityThreshold = Math.abs(currentVelocity) <= restSpeed;
-        const isBelowDisplacementThreshold = Math.abs(target - current) <= restDelta;
-        state.done = isBelowVelocityThreshold && isBelowDisplacementThreshold;
+        const currentVelocity = /* @__PURE__ */ secondsToMilliseconds(resolveVelocity(t));
+        state.done = Math.abs(currentVelocity) <= restSpeed && Math.abs(target - current) <= restDelta;
       } else {
         state.done = t >= duration;
       }
@@ -15218,6 +15306,11 @@ spring.applyToOptions = (options) => {
   options.type = "keyframes";
   return options;
 };
+const velocitySampleDuration = 5;
+function getGeneratorVelocity(resolveValue, t, current) {
+  const prevT = Math.max(t - velocitySampleDuration, 0);
+  return velocityPerSecond(current - resolveValue(prevT), t - prevT);
+}
 function inertia({ keyframes: keyframes2, velocity = 0, power = 0.8, timeConstant = 325, bounceDamping = 10, bounceStiffness = 500, modifyTarget, min, max, restDelta = 0.5, restSpeed }) {
   const origin = keyframes2[0];
   const state = {
@@ -15253,7 +15346,7 @@ function inertia({ keyframes: keyframes2, velocity = 0, power = 0.8, timeConstan
     timeReachedBoundary = t;
     spring$1 = spring({
       keyframes: [state.value, nearestBoundary(state.value)],
-      velocity: calcGeneratorVelocity(calcLatest, t, state.value),
+      velocity: getGeneratorVelocity(calcLatest, t, state.value),
       // TODO: This should be passing * 1000
       damping: bounceDamping,
       stiffness: bounceStiffness,
@@ -15517,7 +15610,7 @@ class JSAnimation extends WithPromise {
       elapsed = clamp(0, 1, iterationProgress) * resolvedDuration;
     }
     const state = isInDelayPhase ? { done: false, value: keyframes2[0] } : frameGenerator.next(elapsed);
-    if (mixKeyframes) {
+    if (mixKeyframes && !isInDelayPhase) {
       state.value = mixKeyframes(state.value);
     }
     let { done } = state;
@@ -15555,7 +15648,6 @@ class JSAnimation extends WithPromise {
     return /* @__PURE__ */ millisecondsToSeconds(this.currentTime);
   }
   set time(newTime) {
-    var _a2;
     newTime = /* @__PURE__ */ secondsToMilliseconds(newTime);
     this.currentTime = newTime;
     if (this.startTime === null || this.holdTime !== null || this.playbackSpeed === 0) {
@@ -15563,16 +15655,40 @@ class JSAnimation extends WithPromise {
     } else if (this.driver) {
       this.startTime = this.driver.now() - newTime / this.playbackSpeed;
     }
-    (_a2 = this.driver) == null ? void 0 : _a2.start(false);
+    if (this.driver) {
+      this.driver.start(false);
+    } else {
+      this.startTime = 0;
+      this.state = "paused";
+      this.holdTime = newTime;
+      this.tick(newTime);
+    }
+  }
+  /**
+   * Returns the generator's velocity at the current time in units/second.
+   * Uses the analytical derivative when available (springs), avoiding
+   * the MotionValue's frame-dependent velocity estimation.
+   */
+  getGeneratorVelocity() {
+    const t = this.currentTime;
+    if (t <= 0)
+      return this.options.velocity || 0;
+    if (this.generator.velocity) {
+      return this.generator.velocity(t);
+    }
+    const current = this.generator.next(t).value;
+    return getGeneratorVelocity((s) => this.generator.next(s).value, t, current);
   }
   get speed() {
     return this.playbackSpeed;
   }
   set speed(newSpeed) {
-    this.updateTime(time.now());
     const hasChanged = this.playbackSpeed !== newSpeed;
+    if (hasChanged && this.driver) {
+      this.updateTime(time.now());
+    }
     this.playbackSpeed = newSpeed;
-    if (hasChanged) {
+    if (hasChanged && this.driver) {
       this.time = /* @__PURE__ */ millisecondsToSeconds(this.currentTime);
     }
   }
@@ -15773,8 +15889,14 @@ function removeNonTranslationalTransform(visualElement) {
 }
 const positionalValues = {
   // Dimensions
-  width: ({ x: x2 }, { paddingLeft = "0", paddingRight = "0" }) => x2.max - x2.min - parseFloat(paddingLeft) - parseFloat(paddingRight),
-  height: ({ y }, { paddingTop = "0", paddingBottom = "0" }) => y.max - y.min - parseFloat(paddingTop) - parseFloat(paddingBottom),
+  width: ({ x: x2 }, { paddingLeft = "0", paddingRight = "0", boxSizing }) => {
+    const width = x2.max - x2.min;
+    return boxSizing === "border-box" ? width : width - parseFloat(paddingLeft) - parseFloat(paddingRight);
+  },
+  height: ({ y }, { paddingTop = "0", paddingBottom = "0", boxSizing }) => {
+    const height = y.max - y.min;
+    return boxSizing === "border-box" ? height : height - parseFloat(paddingTop) - parseFloat(paddingBottom);
+  },
   top: (_bbox, { top }) => parseFloat(top),
   left: (_bbox, { left }) => parseFloat(left),
   bottom: ({ y }, { top }) => parseFloat(top) + (y.max - y.min),
@@ -15916,8 +16038,8 @@ function setStyle(element, name, value) {
 }
 const supportsFlags = {};
 function memoSupports(callback, supportsFlag) {
-  const memoized2 = /* @__PURE__ */ memo(callback);
-  return () => supportsFlags[supportsFlag] ?? memoized2();
+  const memoized = /* @__PURE__ */ memo(callback);
+  return () => supportsFlags[supportsFlag] ?? memoized();
 }
 const supportsScrollTimeline = /* @__PURE__ */ memoSupports(() => window.ScrollTimeline !== void 0, "scrollTimeline");
 const supportsLinearEasing = /* @__PURE__ */ memoSupports(() => {
@@ -16011,9 +16133,8 @@ class NativeAnimation extends WithPromise {
         const keyframe = getFinalKeyframe$1(keyframes2, this.options, finalKeyframe, this.speed);
         if (this.updateMotionValue) {
           this.updateMotionValue(keyframe);
-        } else {
-          setStyle(element, name, keyframe);
         }
+        setStyle(element, name, keyframe);
         this.animation.cancel();
       }
       onComplete == null ? void 0 : onComplete();
@@ -16090,9 +16211,13 @@ class NativeAnimation extends WithPromise {
     return /* @__PURE__ */ millisecondsToSeconds(Number(this.animation.currentTime) || 0);
   }
   set time(newTime) {
+    const wasFinished = this.finishedTime !== null;
     this.manualStartTime = null;
     this.finishedTime = null;
     this.animation.currentTime = /* @__PURE__ */ secondsToMilliseconds(newTime);
+    if (wasFinished) {
+      this.animation.pause();
+    }
   }
   /**
    * The playback speed of the animation.
@@ -16118,7 +16243,7 @@ class NativeAnimation extends WithPromise {
   /**
    * Attaches a timeline to the animation, for instance the `ScrollTimeline`.
    */
-  attachTimeline({ timeline, observe }) {
+  attachTimeline({ timeline, rangeStart, rangeEnd, observe }) {
     var _a2;
     if (this.allowFlatten) {
       (_a2 = this.animation.effect) == null ? void 0 : _a2.updateTiming({ easing: "linear" });
@@ -16126,6 +16251,10 @@ class NativeAnimation extends WithPromise {
     this.animation.onfinish = null;
     if (timeline && supportsScrollTimeline()) {
       this.animation.timeline = timeline;
+      if (rangeStart)
+        this.animation.rangeStart = rangeStart;
+      if (rangeEnd)
+        this.animation.rangeEnd = rangeEnd;
       return noop;
     } else {
       return observe(this);
@@ -16151,7 +16280,7 @@ class NativeAnimationExtended extends NativeAnimation {
     replaceStringEasing(options);
     replaceTransitionType(options);
     super(options);
-    if (options.startTime !== void 0) {
+    if (options.startTime !== void 0 && options.autoplay !== false) {
       this.startTime = options.startTime;
     }
     this.options = options;
@@ -16178,7 +16307,11 @@ class NativeAnimationExtended extends NativeAnimation {
     });
     const sampleTime = Math.max(sampleDelta, time.now() - this.startTime);
     const delta = clamp(0, sampleDelta, sampleTime - sampleDelta);
-    motionValue2.setWithVelocity(sampleAnimation.sample(Math.max(0, sampleTime - delta)).value, sampleAnimation.sample(sampleTime).value, delta);
+    const current = sampleAnimation.sample(sampleTime).value;
+    const { name } = this.options;
+    if (element && name)
+      setStyle(element, name, current);
+    motionValue2.setWithVelocity(sampleAnimation.sample(Math.max(0, sampleTime - delta)).value, current, delta);
     sampleAnimation.stop();
   }
 }
@@ -16280,7 +16413,9 @@ class AsyncMotionValueAnimation extends WithPromise {
     this.keyframeResolver = void 0;
     const { name, type, velocity, delay: delay2, isHandoff, onUpdate } = options;
     this.resolvedAt = time.now();
+    let canAnimateValue = true;
     if (!canAnimate(keyframes2, name, type, velocity)) {
+      canAnimateValue = false;
       if (MotionGlobalConfig.instantAnimations || !delay2) {
         onUpdate == null ? void 0 : onUpdate(getFinalKeyframe$1(keyframes2, options, finalKeyframe));
       }
@@ -16295,7 +16430,7 @@ class AsyncMotionValueAnimation extends WithPromise {
       ...options,
       keyframes: keyframes2
     };
-    const useWaapi = !isHandoff && supportsBrowserAnimation(resolvedOptions);
+    const useWaapi = canAnimateValue && !isHandoff && supportsBrowserAnimation(resolvedOptions);
     const element = (_b2 = (_a2 = resolvedOptions.motionValue) == null ? void 0 : _a2.owner) == null ? void 0 : _b2.current;
     const animation = useWaapi ? new NativeAnimationExtended({
       ...resolvedOptions,
@@ -17283,7 +17418,7 @@ const getValueAsType = (value, type) => {
   return type && typeof value === "number" ? type.transform(value) : value;
 };
 function isHTMLElement(element) {
-  return isObject$1(element) && "offsetHeight" in element;
+  return isObject(element) && "offsetHeight" in element && !("ownerSVGElement" in element);
 }
 const { schedule: microtask } = /* @__PURE__ */ createRenderBatcher(queueMicrotask, false);
 const isDragging = {
@@ -17493,7 +17628,7 @@ function press(targetOrSelector, onPressStart, options = {}) {
   return cancelEvents;
 }
 function isSVGElement(element) {
-  return isObject$1(element) && "ownerSVGElement" in element;
+  return isObject(element) && "ownerSVGElement" in element;
 }
 const resizeHandlers = /* @__PURE__ */ new WeakMap();
 let observer;
@@ -17656,10 +17791,10 @@ function updateMotionValuesFromProps(element, next, prev) {
 }
 const prefersReducedMotion = { current: null };
 const hasReducedMotionListener = { current: false };
-const isBrowser$1 = typeof window !== "undefined";
+const isBrowser = typeof window !== "undefined";
 function initPrefersReducedMotion() {
   hasReducedMotionListener.current = true;
-  if (!isBrowser$1)
+  if (!isBrowser)
     return;
   if (window.matchMedia) {
     const motionMediaQuery = window.matchMedia("(prefers-reduced-motion)");
@@ -18166,6 +18301,7 @@ function applyBoxDelta(box, { x: x2, y }) {
 const TREE_SCALE_SNAP_MIN = 0.999999999999;
 const TREE_SCALE_SNAP_MAX = 1.0000000000001;
 function applyTreeDeltas(box, treeScale, treePath, isSharedTransition = false) {
+  var _a2;
   const treeLength = treePath.length;
   if (!treeLength)
     return;
@@ -18191,7 +18327,7 @@ function applyTreeDeltas(box, treeScale, treePath, isSharedTransition = false) {
       applyBoxDelta(box, delta);
     }
     if (isSharedTransition && hasTransform(node.latestValues)) {
-      transformBox(box, node.latestValues);
+      transformBox(box, node.latestValues, (_a2 = node.layout) == null ? void 0 : _a2.layoutBox);
     }
   }
   if (treeScale.x < TREE_SCALE_SNAP_MAX && treeScale.x > TREE_SCALE_SNAP_MIN) {
@@ -18209,9 +18345,16 @@ function transformAxis(axis, axisTranslate, axisScale, boxScale, axisOrigin = 0.
   const originPoint = mixNumber$1(axis.min, axis.max, axisOrigin);
   applyAxisDelta(axis, axisTranslate, axisScale, originPoint, boxScale);
 }
-function transformBox(box, transform) {
-  transformAxis(box.x, transform.x, transform.scaleX, transform.scale, transform.originX);
-  transformAxis(box.y, transform.y, transform.scaleY, transform.scale, transform.originY);
+function resolveAxisTranslate(value, axis) {
+  if (typeof value === "string") {
+    return parseFloat(value) / 100 * (axis.max - axis.min);
+  }
+  return value;
+}
+function transformBox(box, transform, sourceBox) {
+  const resolveBox = sourceBox ?? box;
+  transformAxis(box.x, resolveAxisTranslate(transform.x, resolveBox.x), transform.scaleX, transform.scale, transform.originX);
+  transformAxis(box.y, resolveAxisTranslate(transform.y, resolveBox.y), transform.scaleY, transform.scale, transform.originY);
 }
 function measureViewportBox(instance, transformPoint2) {
   return convertBoundingBoxToBox(transformBoxPoints(instance.getBoundingClientRect(), transformPoint2));
@@ -18601,6 +18744,7 @@ function createAnimationState(visualElement) {
   let animate = createAnimateFunction(visualElement);
   let state = createState();
   let isInitialRender = true;
+  let wasReset = false;
   const buildResolvedTypeValues = (type) => (acc, definition) => {
     var _a2;
     const resolved = resolveVariant(visualElement, definition, type === "exit" ? (_a2 = visualElement.presenceContext) == null ? void 0 : _a2.custom : void 0);
@@ -18629,7 +18773,7 @@ function createAnimationState(visualElement) {
       if (activeDelta === false)
         removedVariantIndex = i;
       let isInherited = prop === context[type] && prop !== props[type] && propIsVariant;
-      if (isInherited && isInitialRender && visualElement.manuallyAnimateOnMount) {
+      if (isInherited && (isInitialRender || wasReset) && visualElement.manuallyAnimateOnMount) {
         isInherited = false;
       }
       typeState.protectedKeys = { ...encounteredKeys };
@@ -18703,7 +18847,7 @@ function createAnimationState(visualElement) {
       if (typeState.isActive) {
         encounteredKeys = { ...encounteredKeys, ...resolvedValues };
       }
-      if (isInitialRender && visualElement.blockInitialAnimation) {
+      if ((isInitialRender || wasReset) && visualElement.blockInitialAnimation) {
         shouldAnimateType = false;
       }
       const willAnimateViaParent = isInherited && variantDidChange;
@@ -18711,7 +18855,7 @@ function createAnimationState(visualElement) {
       if (shouldAnimateType && needsAnimating) {
         animations2.push(...definitionList.map((animation) => {
           const options = { type };
-          if (typeof animation === "string" && isInitialRender && !willAnimateViaParent && visualElement.manuallyAnimateOnMount && visualElement.parent) {
+          if (typeof animation === "string" && (isInitialRender || wasReset) && !willAnimateViaParent && visualElement.manuallyAnimateOnMount && visualElement.parent) {
             const { parent } = visualElement;
             const parentVariant = resolveVariant(parent, animation);
             if (parent.enteringChildren && parentVariant) {
@@ -18748,6 +18892,7 @@ function createAnimationState(visualElement) {
       shouldAnimate = false;
     }
     isInitialRender = false;
+    wasReset = false;
     return shouldAnimate ? animate(animations2) : Promise.resolve();
   }
   function setActive(type, isActive) {
@@ -18772,6 +18917,7 @@ function createAnimationState(visualElement) {
     getState: () => state,
     reset: () => {
       state = createState();
+      wasReset = true;
     }
   };
 }
@@ -19049,49 +19195,40 @@ class NodeStack {
   add(node) {
     addUniqueItem(this.members, node);
     for (let i = this.members.length - 1; i >= 0; i--) {
-      const m = this.members[i];
-      if (m === node || m === this.lead || m === this.prevLead)
+      const member = this.members[i];
+      if (member === node || member === this.lead || member === this.prevLead)
         continue;
-      const inst = m.instance;
-      if (inst && inst.isConnected === false && m.isPresent !== false && !m.snapshot) {
-        removeItem(this.members, m);
+      const inst = member.instance;
+      if ((!inst || inst.isConnected === false) && !member.snapshot) {
+        removeItem(this.members, member);
+        member.unmount();
       }
     }
     node.scheduleRender();
   }
   remove(node) {
     removeItem(this.members, node);
-    if (node === this.prevLead) {
+    if (node === this.prevLead)
       this.prevLead = void 0;
-    }
     if (node === this.lead) {
       const prevLead = this.members[this.members.length - 1];
-      if (prevLead) {
+      if (prevLead)
         this.promote(prevLead);
-      }
     }
   }
   relegate(node) {
-    const indexOfNode = this.members.findIndex((member) => node === member);
-    if (indexOfNode === 0)
-      return false;
-    let prevLead;
-    for (let i = indexOfNode; i >= 0; i--) {
+    var _a2;
+    for (let i = this.members.indexOf(node) - 1; i >= 0; i--) {
       const member = this.members[i];
-      const inst = member.instance;
-      if (member.isPresent !== false && (!inst || inst.isConnected !== false)) {
-        prevLead = member;
-        break;
+      if (member.isPresent !== false && ((_a2 = member.instance) == null ? void 0 : _a2.isConnected) !== false) {
+        this.promote(member);
+        return true;
       }
     }
-    if (prevLead) {
-      this.promote(prevLead);
-      return true;
-    } else {
-      return false;
-    }
+    return false;
   }
   promote(node, preserveFollowOpacity) {
+    var _a2;
     const prevLead = this.lead;
     if (node === prevLead)
       return;
@@ -19099,56 +19236,39 @@ class NodeStack {
     this.lead = node;
     node.show();
     if (prevLead) {
-      prevLead.instance && prevLead.scheduleRender();
+      prevLead.updateSnapshot();
       node.scheduleRender();
-      const prevDep = prevLead.options.layoutDependency;
-      const nextDep = node.options.layoutDependency;
-      const dependencyMatches = prevDep !== void 0 && nextDep !== void 0 && prevDep === nextDep;
-      if (!dependencyMatches) {
-        const prevInstance = prevLead.instance;
-        const isStale = prevInstance && prevInstance.isConnected === false && !prevLead.snapshot;
-        if (!isStale) {
-          node.resumeFrom = prevLead;
-          if (preserveFollowOpacity) {
-            node.resumeFrom.preserveOpacity = true;
-          }
-          if (prevLead.snapshot) {
-            node.snapshot = prevLead.snapshot;
-            node.snapshot.latestValues = prevLead.animationValues || prevLead.latestValues;
-          }
-          if (node.root && node.root.isUpdating) {
-            node.isLayoutDirty = true;
-          }
+      const { layoutDependency: prevDep } = prevLead.options;
+      const { layoutDependency: nextDep } = node.options;
+      if (prevDep === void 0 || prevDep !== nextDep) {
+        node.resumeFrom = prevLead;
+        if (preserveFollowOpacity)
+          prevLead.preserveOpacity = true;
+        if (prevLead.snapshot) {
+          node.snapshot = prevLead.snapshot;
+          node.snapshot.latestValues = prevLead.animationValues || prevLead.latestValues;
         }
+        if ((_a2 = node.root) == null ? void 0 : _a2.isUpdating)
+          node.isLayoutDirty = true;
       }
-      const { crossfade } = node.options;
-      if (crossfade === false) {
+      if (node.options.crossfade === false)
         prevLead.hide();
-      }
     }
   }
   exitAnimationComplete() {
-    this.members.forEach((node) => {
-      const { options, resumingFrom } = node;
-      options.onExitComplete && options.onExitComplete();
-      if (resumingFrom) {
-        resumingFrom.options.onExitComplete && resumingFrom.options.onExitComplete();
-      }
+    this.members.forEach((member) => {
+      var _a2, _b2, _c2, _d2, _e2;
+      (_b2 = (_a2 = member.options).onExitComplete) == null ? void 0 : _b2.call(_a2);
+      (_e2 = (_c2 = member.resumingFrom) == null ? void 0 : (_d2 = _c2.options).onExitComplete) == null ? void 0 : _e2.call(_d2);
     });
   }
   scheduleRender() {
-    this.members.forEach((node) => {
-      node.instance && node.scheduleRender(false);
-    });
+    this.members.forEach((member) => member.instance && member.scheduleRender(false));
   }
-  /**
-   * Clear any leads that have been removed this render to prevent them from being
-   * used in future animations and to prevent memory leaks
-   */
   removeLeadSnapshot() {
-    if (this.lead && this.lead.snapshot) {
+    var _a2;
+    if ((_a2 = this.lead) == null ? void 0 : _a2.snapshot)
       this.lead.snapshot = void 0;
-    }
   }
 }
 const globalProjectionState = {
@@ -19395,6 +19515,9 @@ function createProjectionNode$1({ attachResizeListener, defaultParent, measureSc
       for (let i = 0; i < this.path.length; i++) {
         const node = this.path[i];
         node.shouldResetTransform = true;
+        if (typeof node.latestValues.x === "string" || typeof node.latestValues.y === "string") {
+          node.isLayoutDirty = true;
+        }
         node.updateScroll("snapshot");
         if (node.options.layoutRoot) {
           node.willUpdate(false);
@@ -19581,6 +19704,7 @@ function createProjectionNode$1({ attachResizeListener, defaultParent, measureSc
       return boxWithoutScroll;
     }
     applyTransform(box, transformOnly = false) {
+      var _a2, _b2;
       const withTransforms = createBox();
       copyBoxInto(withTransforms, box);
       for (let i = 0; i < this.path.length; i++) {
@@ -19593,27 +19717,28 @@ function createProjectionNode$1({ attachResizeListener, defaultParent, measureSc
         }
         if (!hasTransform(node.latestValues))
           continue;
-        transformBox(withTransforms, node.latestValues);
+        transformBox(withTransforms, node.latestValues, (_a2 = node.layout) == null ? void 0 : _a2.layoutBox);
       }
       if (hasTransform(this.latestValues)) {
-        transformBox(withTransforms, this.latestValues);
+        transformBox(withTransforms, this.latestValues, (_b2 = this.layout) == null ? void 0 : _b2.layoutBox);
       }
       return withTransforms;
     }
     removeTransform(box) {
+      var _a2;
       const boxWithoutTransform = createBox();
       copyBoxInto(boxWithoutTransform, box);
       for (let i = 0; i < this.path.length; i++) {
         const node = this.path[i];
-        if (!node.instance)
-          continue;
         if (!hasTransform(node.latestValues))
           continue;
-        hasScale(node.latestValues) && node.updateSnapshot();
-        const sourceBox = createBox();
-        const nodeBox = node.measurePageBox();
-        copyBoxInto(sourceBox, nodeBox);
-        removeBoxTransforms(boxWithoutTransform, node.latestValues, node.snapshot ? node.snapshot.layoutBox : void 0, sourceBox);
+        let sourceBox;
+        if (node.instance) {
+          hasScale(node.latestValues) && node.updateSnapshot();
+          sourceBox = createBox();
+          copyBoxInto(sourceBox, node.measurePageBox());
+        }
+        removeBoxTransforms(boxWithoutTransform, node.latestValues, (_a2 = node.snapshot) == null ? void 0 : _a2.layoutBox, sourceBox);
       }
       if (hasTransform(this.latestValues)) {
         removeBoxTransforms(boxWithoutTransform, this.latestValues);
@@ -20086,6 +20211,9 @@ function notifyLayoutUpdate(node) {
         axisSnapshot.min = layout2[axis].min;
         axisSnapshot.max = axisSnapshot.min + length;
       });
+    } else if (animationType === "x" || animationType === "y") {
+      const snapAxis = animationType === "x" ? "y" : "x";
+      copyAxisInto(isShared ? snapshot.measuredBox[snapAxis] : snapshot.layoutBox[snapAxis], layout2[snapAxis]);
     } else if (shouldAnimatePositionOnly(animationType, snapshot.layoutBox, layout2)) {
       eachAxis((axis) => {
         const axisSnapshot = isShared ? snapshot.measuredBox[axis] : snapshot.layoutBox[axis];
@@ -20299,13 +20427,14 @@ function useComposedRefs(...refs) {
 class PopChildMeasure extends reactExports.Component {
   getSnapshotBeforeUpdate(prevProps) {
     const element = this.props.childRef.current;
-    if (element && prevProps.isPresent && !this.props.isPresent && this.props.pop !== false) {
+    if (isHTMLElement(element) && prevProps.isPresent && !this.props.isPresent && this.props.pop !== false) {
       const parent = element.offsetParent;
       const parentWidth = isHTMLElement(parent) ? parent.offsetWidth || 0 : 0;
       const parentHeight = isHTMLElement(parent) ? parent.offsetHeight || 0 : 0;
+      const computedStyle = getComputedStyle(element);
       const size = this.props.sizeRef.current;
-      size.height = element.offsetHeight || 0;
-      size.width = element.offsetWidth || 0;
+      size.height = parseFloat(computedStyle.height);
+      size.width = parseFloat(computedStyle.width);
       size.top = element.offsetTop;
       size.left = element.offsetLeft;
       size.right = parentWidth - size.width - size.left;
@@ -20361,6 +20490,8 @@ function PopChild({ children, isPresent, anchorX, anchorY, root: root2, pop: pop
         `);
     }
     return () => {
+      var _a3;
+      (_a3 = ref.current) == null ? void 0 : _a3.removeAttribute("data-motion-pop-id");
       if (parent.contains(style2)) {
         parent.removeChild(style2);
       }
@@ -20482,8 +20613,8 @@ const AnimatePresence = ({ children, custom, initial = true, onExitComplete, pre
       if (exitingComponents.current.has(key)) {
         return;
       }
-      exitingComponents.current.add(key);
       if (exitComplete.has(key)) {
+        exitingComponents.current.add(key);
         exitComplete.set(key, true);
       } else {
         return;
@@ -20594,13 +20725,16 @@ function loadExternalIsValidProp(isValidProp) {
   shouldForward = (key) => key.startsWith("on") ? !isValidMotionProp(key) : isValidProp(key);
 }
 try {
-  loadExternalIsValidProp(require("@emotion/is-prop-valid").default);
+  const emotionPkg = "@emotion/is-prop-valid";
+  loadExternalIsValidProp(require(emotionPkg).default);
 } catch {
 }
 function filterProps(props, isDom, forwardMotionProps) {
   const filteredProps = {};
   for (const key in props) {
     if (key === "values" && typeof props.values === "object")
+      continue;
+    if (isMotionValue(props[key]))
       continue;
     if (shouldForward(key) || forwardMotionProps === true && isValidMotionProp(key) || !isDom && !isValidMotionProp(key) || // If trying to use native HTML drag events, forward drag listeners
     props["draggable"] && key.startsWith("onDrag")) {
@@ -20827,9 +20961,6 @@ function useMotionRef(visualState, visualElement, externalRef) {
     if (instance) {
       (_a2 = visualState.onMount) == null ? void 0 : _a2.call(visualState, instance);
     }
-    if (visualElement) {
-      instance ? visualElement.mount(instance) : visualElement.unmount();
-    }
     const ref = externalRefContainer.current;
     if (typeof ref === "function") {
       if (instance) {
@@ -20845,6 +20976,9 @@ function useMotionRef(visualState, visualElement, externalRef) {
       }
     } else if (ref) {
       ref.current = instance;
+    }
+    if (visualElement) {
+      instance ? visualElement.mount(instance) : visualElement.unmount();
     }
   }, [visualElement]);
 }
@@ -20890,7 +21024,7 @@ function useVisualElement(Component2, visualState, props, createVisualElement, P
     }
   });
   const optimisedAppearId = props[optimizedAppearDataAttribute];
-  const wantsHandoff = reactExports.useRef(Boolean(optimisedAppearId) && !((_a2 = window.MotionHandoffIsComplete) == null ? void 0 : _a2.call(window, optimisedAppearId)) && ((_b2 = window.MotionHasOptimisedAnimation) == null ? void 0 : _b2.call(window, optimisedAppearId)));
+  const wantsHandoff = reactExports.useRef(Boolean(optimisedAppearId) && typeof window !== "undefined" && !((_a2 = window.MotionHandoffIsComplete) == null ? void 0 : _a2.call(window, optimisedAppearId)) && ((_b2 = window.MotionHasOptimisedAnimation) == null ? void 0 : _b2.call(window, optimisedAppearId)));
   useIsomorphicLayoutEffect(() => {
     hasMountedOnce.current = true;
     if (!visualElement)
@@ -20961,7 +21095,7 @@ function createMotionComponent(Component2, { forwardMotionProps = false, type } 
     const { isStatic } = configAndProps;
     const context = useCreateMotionContext(props);
     const visualState = useVisualState(props, isStatic);
-    if (!isStatic && isBrowser$2) {
+    if (!isStatic && typeof window !== "undefined") {
       useStrictMode();
       const layoutProjection = getProjectionFunctionality(configAndProps);
       MeasureLayout2 = layoutProjection.MeasureLayout;
@@ -21065,8 +21199,10 @@ class ExitAnimationFeature extends Feature {
   constructor() {
     super(...arguments);
     this.id = id++;
+    this.isExitComplete = false;
   }
   update() {
+    var _a2;
     if (!this.node.presenceContext)
       return;
     const { isPresent, onExitComplete } = this.node.presenceContext;
@@ -21074,9 +21210,30 @@ class ExitAnimationFeature extends Feature {
     if (!this.node.animationState || isPresent === prevIsPresent) {
       return;
     }
+    if (isPresent && prevIsPresent === false) {
+      if (this.isExitComplete) {
+        const { initial, custom } = this.node.getProps();
+        if (typeof initial === "string") {
+          const resolved = resolveVariant(this.node, initial, custom);
+          if (resolved) {
+            const { transition, transitionEnd, ...target } = resolved;
+            for (const key in target) {
+              (_a2 = this.node.getValue(key)) == null ? void 0 : _a2.jump(target[key]);
+            }
+          }
+        }
+        this.node.animationState.reset();
+        this.node.animationState.animateChanges();
+      } else {
+        this.node.animationState.setActive("exit", false);
+      }
+      this.isExitComplete = false;
+      return;
+    }
     const exitAnimation = this.node.animationState.setActive("exit", !isPresent);
     if (onExitComplete && !isPresent) {
       exitAnimation.then(() => {
+        this.isExitComplete = true;
         onExitComplete(this.id);
       });
     }
@@ -21109,9 +21266,7 @@ function extractEventInfo(event) {
     }
   };
 }
-const addPointerInfo = (handler) => {
-  return (event) => isPrimaryPointer(event) && handler(event, extractEventInfo(event));
-};
+const addPointerInfo = (handler) => (event) => isPrimaryPointer(event) && handler(event, extractEventInfo(event));
 function addPointerEvent(target, eventName, handler, options) {
   return addDomEvent(target, eventName, addPointerInfo(handler), options);
 }
@@ -21130,6 +21285,7 @@ class PanSession {
     this.startEvent = null;
     this.lastMoveEvent = null;
     this.lastMoveEventInfo = null;
+    this.lastRawMoveEventInfo = null;
     this.handlers = {};
     this.contextWindow = window;
     this.scrollPositions = /* @__PURE__ */ new Map();
@@ -21143,6 +21299,9 @@ class PanSession {
     this.updatePoint = () => {
       if (!(this.lastMoveEvent && this.lastMoveEventInfo))
         return;
+      if (this.lastRawMoveEventInfo) {
+        this.lastMoveEventInfo = transformPoint(this.lastRawMoveEventInfo, this.transformPagePoint);
+      }
       const info2 = getPanInfo(this.lastMoveEventInfo, this.history);
       const isPanStarted = this.startEvent !== null;
       const isDistancePastThreshold = distance2D(info2.offset, { x: 0, y: 0 }) >= this.distanceThreshold;
@@ -21160,6 +21319,7 @@ class PanSession {
     };
     this.handlePointerMove = (event2, info2) => {
       this.lastMoveEvent = event2;
+      this.lastRawMoveEventInfo = info2;
       this.lastMoveEventInfo = transformPoint(info2, this.transformPagePoint);
       frame.update(this.updatePoint, true);
     };
@@ -21619,7 +21779,7 @@ class VisualElementDragControls {
         return;
       }
       let transition = constraints && constraints[axis] || {};
-      if (dragSnapToOrigin)
+      if (dragSnapToOrigin === true || dragSnapToOrigin === axis)
         transition = { min: 0, max: 0 };
       const bounceStiffness = dragElastic ? 200 : 1e6;
       const bounceDamping = dragElastic ? 40 : 1e7;
@@ -22190,45 +22350,32 @@ var DefaultContext = {
 };
 var IconContext = React$2.createContext && /* @__PURE__ */ React$2.createContext(DefaultContext);
 var _excluded = ["attr", "size", "title"];
-function _objectWithoutProperties(source, excluded) {
-  if (source == null) return {};
-  var target = _objectWithoutPropertiesLoose(source, excluded);
-  var key, i;
+function _objectWithoutProperties(e, t) {
+  if (null == e) return {};
+  var o, r2, i = _objectWithoutPropertiesLoose(e, t);
   if (Object.getOwnPropertySymbols) {
-    var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
-    for (i = 0; i < sourceSymbolKeys.length; i++) {
-      key = sourceSymbolKeys[i];
-      if (excluded.indexOf(key) >= 0) continue;
-      if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
-      target[key] = source[key];
-    }
+    var n = Object.getOwnPropertySymbols(e);
+    for (r2 = 0; r2 < n.length; r2++) o = n[r2], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]);
   }
-  return target;
+  return i;
 }
-function _objectWithoutPropertiesLoose(source, excluded) {
-  if (source == null) return {};
-  var target = {};
-  for (var key in source) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
-      if (excluded.indexOf(key) >= 0) continue;
-      target[key] = source[key];
-    }
+function _objectWithoutPropertiesLoose(r2, e) {
+  if (null == r2) return {};
+  var t = {};
+  for (var n in r2) if ({}.hasOwnProperty.call(r2, n)) {
+    if (-1 !== e.indexOf(n)) continue;
+    t[n] = r2[n];
   }
-  return target;
+  return t;
 }
 function _extends() {
-  _extends = Object.assign ? Object.assign.bind() : function(target) {
-    for (var i = 1; i < arguments.length; i++) {
-      var source = arguments[i];
-      for (var key in source) {
-        if (Object.prototype.hasOwnProperty.call(source, key)) {
-          target[key] = source[key];
-        }
-      }
+  return _extends = Object.assign ? Object.assign.bind() : function(n) {
+    for (var e = 1; e < arguments.length; e++) {
+      var t = arguments[e];
+      for (var r2 in t) ({}).hasOwnProperty.call(t, r2) && (n[r2] = t[r2]);
     }
-    return target;
-  };
-  return _extends.apply(this, arguments);
+    return n;
+  }, _extends.apply(null, arguments);
 }
 function ownKeys(e, r2) {
   var t = Object.keys(e);
@@ -22251,14 +22398,8 @@ function _objectSpread(e) {
   }
   return e;
 }
-function _defineProperty(obj, key, value) {
-  key = _toPropertyKey(key);
-  if (key in obj) {
-    Object.defineProperty(obj, key, { value, enumerable: true, configurable: true, writable: true });
-  } else {
-    obj[key] = value;
-  }
-  return obj;
+function _defineProperty(e, r2, t) {
+  return (r2 = _toPropertyKey(r2)) in e ? Object.defineProperty(e, r2, { value: t, enumerable: true, configurable: true, writable: true }) : e[r2] = t, e;
 }
 function _toPropertyKey(t) {
   var i = _toPrimitive(t, "string");
@@ -22311,77 +22452,77 @@ function IconBase(props) {
   };
   return IconContext !== void 0 ? /* @__PURE__ */ React$2.createElement(IconContext.Consumer, null, (conf) => elem(conf)) : elem(DefaultContext);
 }
-function FiArrowDown(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "5", "x2": "12", "y2": "19" }, "child": [] }, { "tag": "polyline", "attr": { "points": "19 12 12 19 5 12" }, "child": [] }] })(props);
-}
-function FiAward(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "8", "r": "7" }, "child": [] }, { "tag": "polyline", "attr": { "points": "8.21 13.89 7 23 12 20 17 23 15.79 13.88" }, "child": [] }] })(props);
-}
-function FiBookOpen(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }, "child": [] }, { "tag": "path", "attr": { "d": "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" }, "child": [] }] })(props);
-}
-function FiCalendar(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "3", "y": "4", "width": "18", "height": "18", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "line", "attr": { "x1": "16", "y1": "2", "x2": "16", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "8", "y1": "2", "x2": "8", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "10", "x2": "21", "y2": "10" }, "child": [] }] })(props);
-}
-function FiClock(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "10" }, "child": [] }, { "tag": "polyline", "attr": { "points": "12 6 12 12 16 14" }, "child": [] }] })(props);
-}
-function FiCode(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "16 18 22 12 16 6" }, "child": [] }, { "tag": "polyline", "attr": { "points": "8 6 2 12 8 18" }, "child": [] }] })(props);
-}
-function FiDownload(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "7 10 12 15 17 10" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "15", "x2": "12", "y2": "3" }, "child": [] }] })(props);
-}
-function FiExternalLink(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }, "child": [] }, { "tag": "polyline", "attr": { "points": "15 3 21 3 21 9" }, "child": [] }, { "tag": "line", "attr": { "x1": "10", "y1": "14", "x2": "21", "y2": "3" }, "child": [] }] })(props);
-}
-function FiGithub(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" }, "child": [] }] })(props);
-}
-function FiHeart(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" }, "child": [] }] })(props);
-}
-function FiLinkedin(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" }, "child": [] }, { "tag": "rect", "attr": { "x": "2", "y": "9", "width": "4", "height": "12" }, "child": [] }, { "tag": "circle", "attr": { "cx": "4", "cy": "4", "r": "2" }, "child": [] }] })(props);
-}
-function FiLoader(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "2", "x2": "12", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "18", "x2": "12", "y2": "22" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.93", "y1": "4.93", "x2": "7.76", "y2": "7.76" }, "child": [] }, { "tag": "line", "attr": { "x1": "16.24", "y1": "16.24", "x2": "19.07", "y2": "19.07" }, "child": [] }, { "tag": "line", "attr": { "x1": "2", "y1": "12", "x2": "6", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "18", "y1": "12", "x2": "22", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.93", "y1": "19.07", "x2": "7.76", "y2": "16.24" }, "child": [] }, { "tag": "line", "attr": { "x1": "16.24", "y1": "7.76", "x2": "19.07", "y2": "4.93" }, "child": [] }] })(props);
-}
-function FiMail(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" }, "child": [] }, { "tag": "polyline", "attr": { "points": "22,6 12,13 2,6" }, "child": [] }] })(props);
-}
-function FiMenu(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "3", "y1": "12", "x2": "21", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "6", "x2": "21", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "18", "x2": "21", "y2": "18" }, "child": [] }] })(props);
-}
-function FiMoon(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" }, "child": [] }] })(props);
-}
-function FiPhone(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" }, "child": [] }] })(props);
-}
-function FiSend(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "22", "y1": "2", "x2": "11", "y2": "13" }, "child": [] }, { "tag": "polygon", "attr": { "points": "22 2 15 22 11 13 2 9 22 2" }, "child": [] }] })(props);
-}
-function FiStar(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" }, "child": [] }] })(props);
-}
-function FiSun(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "5" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "1", "x2": "12", "y2": "3" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "21", "x2": "12", "y2": "23" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.22", "y1": "4.22", "x2": "5.64", "y2": "5.64" }, "child": [] }, { "tag": "line", "attr": { "x1": "18.36", "y1": "18.36", "x2": "19.78", "y2": "19.78" }, "child": [] }, { "tag": "line", "attr": { "x1": "1", "y1": "12", "x2": "3", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "y1": "12", "x2": "23", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.22", "y1": "19.78", "x2": "5.64", "y2": "18.36" }, "child": [] }, { "tag": "line", "attr": { "x1": "18.36", "y1": "5.64", "x2": "19.78", "y2": "4.22" }, "child": [] }] })(props);
-}
-function FiUsers(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }, "child": [] }, { "tag": "circle", "attr": { "cx": "9", "cy": "7", "r": "4" }, "child": [] }, { "tag": "path", "attr": { "d": "M23 21v-2a4 4 0 0 0-3-3.87" }, "child": [] }, { "tag": "path", "attr": { "d": "M16 3.13a4 4 0 0 1 0 7.75" }, "child": [] }] })(props);
+function FiZap(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "13 2 3 14 12 14 11 22 21 10 12 10 13 2" }, "child": [] }] })(props);
 }
 function FiX(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "18", "y1": "6", "x2": "6", "y2": "18" }, "child": [] }, { "tag": "line", "attr": { "x1": "6", "y1": "6", "x2": "18", "y2": "18" }, "child": [] }] })(props);
 }
-function FiZap(props) {
-  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "13 2 3 14 12 14 11 22 21 10 12 10 13 2" }, "child": [] }] })(props);
+function FiUsers(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }, "child": [] }, { "tag": "circle", "attr": { "cx": "9", "cy": "7", "r": "4" }, "child": [] }, { "tag": "path", "attr": { "d": "M23 21v-2a4 4 0 0 0-3-3.87" }, "child": [] }, { "tag": "path", "attr": { "d": "M16 3.13a4 4 0 0 1 0 7.75" }, "child": [] }] })(props);
 }
-function SiGeeksforgeeks(props) {
-  return GenIcon({ "attr": { "role": "img", "viewBox": "0 0 24 24" }, "child": [{ "tag": "path", "attr": { "d": "M21.45 14.315c-.143.28-.334.532-.565.745a3.691 3.691 0 0 1-1.104.695 4.51 4.51 0 0 1-3.116-.016 3.79 3.79 0 0 1-2.135-2.078 3.571 3.571 0 0 1-.13-.353h7.418a4.26 4.26 0 0 1-.368 1.008zm-11.99-.654a3.793 3.793 0 0 1-2.134 2.078 4.51 4.51 0 0 1-3.117.016 3.7 3.7 0 0 1-1.104-.695 2.652 2.652 0 0 1-.564-.745 4.221 4.221 0 0 1-.368-1.006H9.59c-.038.12-.08.238-.13.352zm14.501-1.758a3.849 3.849 0 0 0-.082-.475l-9.634-.008a3.932 3.932 0 0 1 1.143-2.348c.363-.35.79-.625 1.26-.809a3.97 3.97 0 0 1 4.484.957l1.521-1.49a5.7 5.7 0 0 0-1.922-1.357 6.283 6.283 0 0 0-2.544-.49 6.35 6.35 0 0 0-2.405.457 6.007 6.007 0 0 0-1.963 1.276 6.142 6.142 0 0 0-1.325 1.94 5.862 5.862 0 0 0-.466 1.864h-.063a5.857 5.857 0 0 0-.467-1.865 6.13 6.13 0 0 0-1.325-1.939A6 6 0 0 0 8.21 6.34a6.698 6.698 0 0 0-4.949.031A5.708 5.708 0 0 0 1.34 7.73l1.52 1.49a4.166 4.166 0 0 1 4.484-.958c.47.184.898.46 1.26.81.368.36.66.792.859 1.268.146.344.242.708.285 1.08l-9.635.008A4.714 4.714 0 0 0 0 12.457a6.493 6.493 0 0 0 .345 2.127 4.927 4.927 0 0 0 1.08 1.783c.528.56 1.17 1 1.88 1.293a6.454 6.454 0 0 0 2.504.457c.824.005 1.64-.15 2.404-.457a5.986 5.986 0 0 0 1.964-1.277 6.116 6.116 0 0 0 1.686-3.076h.273a6.13 6.13 0 0 0 1.686 3.077 5.99 5.99 0 0 0 1.964 1.276 6.345 6.345 0 0 0 2.405.457 6.45 6.45 0 0 0 2.502-.457 5.42 5.42 0 0 0 1.882-1.293 4.928 4.928 0 0 0 1.08-1.783A6.52 6.52 0 0 0 24 12.457a4.757 4.757 0 0 0-.039-.554z" }, "child": [] }] })(props);
+function FiSun(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "5" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "1", "x2": "12", "y2": "3" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "21", "x2": "12", "y2": "23" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.22", "y1": "4.22", "x2": "5.64", "y2": "5.64" }, "child": [] }, { "tag": "line", "attr": { "x1": "18.36", "y1": "18.36", "x2": "19.78", "y2": "19.78" }, "child": [] }, { "tag": "line", "attr": { "x1": "1", "y1": "12", "x2": "3", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "y1": "12", "x2": "23", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.22", "y1": "19.78", "x2": "5.64", "y2": "18.36" }, "child": [] }, { "tag": "line", "attr": { "x1": "18.36", "y1": "5.64", "x2": "19.78", "y2": "4.22" }, "child": [] }] })(props);
+}
+function FiStar(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" }, "child": [] }] })(props);
+}
+function FiSend(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "22", "y1": "2", "x2": "11", "y2": "13" }, "child": [] }, { "tag": "polygon", "attr": { "points": "22 2 15 22 11 13 2 9 22 2" }, "child": [] }] })(props);
+}
+function FiPhone(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" }, "child": [] }] })(props);
+}
+function FiMoon(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" }, "child": [] }] })(props);
+}
+function FiMenu(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "3", "y1": "12", "x2": "21", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "6", "x2": "21", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "18", "x2": "21", "y2": "18" }, "child": [] }] })(props);
+}
+function FiMail(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" }, "child": [] }, { "tag": "polyline", "attr": { "points": "22,6 12,13 2,6" }, "child": [] }] })(props);
+}
+function FiLoader(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "2", "x2": "12", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "18", "x2": "12", "y2": "22" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.93", "y1": "4.93", "x2": "7.76", "y2": "7.76" }, "child": [] }, { "tag": "line", "attr": { "x1": "16.24", "y1": "16.24", "x2": "19.07", "y2": "19.07" }, "child": [] }, { "tag": "line", "attr": { "x1": "2", "y1": "12", "x2": "6", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "18", "y1": "12", "x2": "22", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "4.93", "y1": "19.07", "x2": "7.76", "y2": "16.24" }, "child": [] }, { "tag": "line", "attr": { "x1": "16.24", "y1": "7.76", "x2": "19.07", "y2": "4.93" }, "child": [] }] })(props);
+}
+function FiLinkedin(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" }, "child": [] }, { "tag": "rect", "attr": { "x": "2", "y": "9", "width": "4", "height": "12" }, "child": [] }, { "tag": "circle", "attr": { "cx": "4", "cy": "4", "r": "2" }, "child": [] }] })(props);
+}
+function FiHeart(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" }, "child": [] }] })(props);
+}
+function FiGithub(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" }, "child": [] }] })(props);
+}
+function FiExternalLink(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }, "child": [] }, { "tag": "polyline", "attr": { "points": "15 3 21 3 21 9" }, "child": [] }, { "tag": "line", "attr": { "x1": "10", "y1": "14", "x2": "21", "y2": "3" }, "child": [] }] })(props);
+}
+function FiDownload(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "7 10 12 15 17 10" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "15", "x2": "12", "y2": "3" }, "child": [] }] })(props);
+}
+function FiCode(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "16 18 22 12 16 6" }, "child": [] }, { "tag": "polyline", "attr": { "points": "8 6 2 12 8 18" }, "child": [] }] })(props);
+}
+function FiClock(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "10" }, "child": [] }, { "tag": "polyline", "attr": { "points": "12 6 12 12 16 14" }, "child": [] }] })(props);
+}
+function FiCalendar(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "3", "y": "4", "width": "18", "height": "18", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "line", "attr": { "x1": "16", "y1": "2", "x2": "16", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "8", "y1": "2", "x2": "8", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "3", "y1": "10", "x2": "21", "y2": "10" }, "child": [] }] })(props);
+}
+function FiBookOpen(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }, "child": [] }, { "tag": "path", "attr": { "d": "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" }, "child": [] }] })(props);
+}
+function FiAward(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "8", "r": "7" }, "child": [] }, { "tag": "polyline", "attr": { "points": "8.21 13.89 7 23 12 20 17 23 15.79 13.88" }, "child": [] }] })(props);
+}
+function FiArrowDown(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "5", "x2": "12", "y2": "19" }, "child": [] }, { "tag": "polyline", "attr": { "points": "19 12 12 19 5 12" }, "child": [] }] })(props);
 }
 function SiLeetcode(props) {
   return GenIcon({ "attr": { "role": "img", "viewBox": "0 0 24 24" }, "child": [{ "tag": "path", "attr": { "d": "M13.483 0a1.374 1.374 0 0 0-.961.438L7.116 6.226l-3.854 4.126a5.266 5.266 0 0 0-1.209 2.104 5.35 5.35 0 0 0-.125.513 5.527 5.527 0 0 0 .062 2.362 5.83 5.83 0 0 0 .349 1.017 5.938 5.938 0 0 0 1.271 1.818l4.277 4.193.039.038c2.248 2.165 5.852 2.133 8.063-.074l2.396-2.392c.54-.54.54-1.414.003-1.955a1.378 1.378 0 0 0-1.951-.003l-2.396 2.392a3.021 3.021 0 0 1-4.205.038l-.02-.019-4.276-4.193c-.652-.64-.972-1.469-.948-2.263a2.68 2.68 0 0 1 .066-.523 2.545 2.545 0 0 1 .619-1.164L9.13 8.114c1.058-1.134 3.204-1.27 4.43-.278l3.501 2.831c.593.48 1.461.387 1.94-.207a1.384 1.384 0 0 0-.207-1.943l-3.5-2.831c-.8-.647-1.766-1.045-2.774-1.202l2.015-2.158A1.384 1.384 0 0 0 13.483 0zm-2.866 12.815a1.38 1.38 0 0 0-1.38 1.382 1.38 1.38 0 0 0 1.38 1.382H20.79a1.38 1.38 0 0 0 1.38-1.382 1.38 1.38 0 0 0-1.38-1.382z" }, "child": [] }] })(props);
+}
+function SiGeeksforgeeks(props) {
+  return GenIcon({ "attr": { "role": "img", "viewBox": "0 0 24 24" }, "child": [{ "tag": "path", "attr": { "d": "M21.45 14.315c-.143.28-.334.532-.565.745a3.691 3.691 0 0 1-1.104.695 4.51 4.51 0 0 1-3.116-.016 3.79 3.79 0 0 1-2.135-2.078 3.571 3.571 0 0 1-.13-.353h7.418a4.26 4.26 0 0 1-.368 1.008zm-11.99-.654a3.793 3.793 0 0 1-2.134 2.078 4.51 4.51 0 0 1-3.117.016 3.7 3.7 0 0 1-1.104-.695 2.652 2.652 0 0 1-.564-.745 4.221 4.221 0 0 1-.368-1.006H9.59c-.038.12-.08.238-.13.352zm14.501-1.758a3.849 3.849 0 0 0-.082-.475l-9.634-.008a3.932 3.932 0 0 1 1.143-2.348c.363-.35.79-.625 1.26-.809a3.97 3.97 0 0 1 4.484.957l1.521-1.49a5.7 5.7 0 0 0-1.922-1.357 6.283 6.283 0 0 0-2.544-.49 6.35 6.35 0 0 0-2.405.457 6.007 6.007 0 0 0-1.963 1.276 6.142 6.142 0 0 0-1.325 1.94 5.862 5.862 0 0 0-.466 1.864h-.063a5.857 5.857 0 0 0-.467-1.865 6.13 6.13 0 0 0-1.325-1.939A6 6 0 0 0 8.21 6.34a6.698 6.698 0 0 0-4.949.031A5.708 5.708 0 0 0 1.34 7.73l1.52 1.49a4.166 4.166 0 0 1 4.484-.958c.47.184.898.46 1.26.81.368.36.66.792.859 1.268.146.344.242.708.285 1.08l-9.635.008A4.714 4.714 0 0 0 0 12.457a6.493 6.493 0 0 0 .345 2.127 4.927 4.927 0 0 0 1.08 1.783c.528.56 1.17 1 1.88 1.293a6.454 6.454 0 0 0 2.504.457c.824.005 1.64-.15 2.404-.457a5.986 5.986 0 0 0 1.964-1.277 6.116 6.116 0 0 0 1.686-3.076h.273a6.13 6.13 0 0 0 1.686 3.077 5.99 5.99 0 0 0 1.964 1.276 6.345 6.345 0 0 0 2.405.457 6.45 6.45 0 0 0 2.502-.457 5.42 5.42 0 0 0 1.882-1.293 4.928 4.928 0 0 0 1.08-1.783A6.52 6.52 0 0 0 24 12.457a4.757 4.757 0 0 0-.039-.554z" }, "child": [] }] })(props);
 }
 const achievements = [
   {
@@ -22390,7 +22531,7 @@ const achievements = [
     bg: "from-orange-500/20 to-yellow-500/15",
     border: "border-orange-500/30",
     title: "LeetCode",
-    description: "Solved 200+ problems, rated in top 30% globally"
+    description: "Solved 1000+ problems, rated in top 30% globally"
   },
   {
     icon: SiGeeksforgeeks,
@@ -22398,15 +22539,15 @@ const achievements = [
     bg: "from-green-500/20 to-emerald-500/15",
     border: "border-green-500/30",
     title: "GeeksforGeeks",
-    description: "150+ problems solved with 3-star rating"
+    description: "500+ problems solved with 3-star rating"
   },
   {
     icon: FiZap,
     color: "text-blue-400",
     bg: "from-blue-500/20 to-indigo-500/15",
     border: "border-blue-500/30",
-    title: "Smart India Hackathon 2023",
-    description: "Participated and showcased innovation in national hackathon"
+    title: "Algo-University Graph Camp",
+    description: "Participated in the algo-university graph camp and solved advanced graph problems."
   },
   {
     icon: FiCode,
@@ -22429,8 +22570,8 @@ const achievements = [
     color: "text-pink-400",
     bg: "from-pink-500/20 to-rose-500/15",
     border: "border-pink-500/30",
-    title: "DSA Mentor",
-    description: "Mentored 20+ junior students in DSA and programming fundamentals"
+    title: "DSA",
+    description: "Developed good problem solving and programming skills."
   }
 ];
 function Achievements() {
@@ -22477,58 +22618,58 @@ function Achievements() {
   ] });
 }
 const training = {
-  title: "DSA with C++",
-  platform: "Udemy / Self-paced",
-  duration: "6 months",
+  title: "Data Structure And Algorithms",
+  platform: "CSE PATHSHALA",
+  duration: "6 weeks",
   topics: [
-    "Arrays",
-    "Linked Lists",
-    "Trees",
-    "Graphs",
+    "C++ STL",
+    "Sorting & Searching",
     "Dynamic Programming",
-    "STL"
+    "Greedy Algorithms",
+    "Graph Algorithms",
+    "Problem Solving"
   ]
 };
 const certificates = [
   {
     id: 1,
-    title: "Python for Data Science",
-    issuer: "Coursera / IBM",
-    year: "2023",
-    link: "https://coursera.org",
-    color: "border-blue-500/30",
-    bg: "from-blue-500/15 to-indigo-500/10",
-    iconColor: "text-blue-400"
+    title: "Cloud Computing",
+    issuer: "NPTEL",
+    date: "October 2025",
+    link: "https://r0.image2url.com/images/1764316420642-6e4ed62f-de5a-406d-8638-98df0828ba5e.jpeg",
+    color: "border-sky-500/30",
+    bg: "from-sky-500/15 to-blue-500/10",
+    iconColor: "text-sky-400"
   },
   {
     id: 2,
-    title: "Machine Learning Specialization",
-    issuer: "Coursera / Andrew Ng",
-    year: "2023",
-    link: "https://coursera.org",
-    color: "border-orange-500/30",
-    bg: "from-orange-500/15 to-yellow-500/10",
-    iconColor: "text-orange-400"
+    title: "Computer Communications",
+    issuer: "Coursera",
+    date: "December 2024",
+    link: "https://www.coursera.org/account/accomplishments/specialization/AANTMFLWRRV8",
+    color: "border-indigo-500/30",
+    bg: "from-indigo-500/15 to-purple-500/10",
+    iconColor: "text-indigo-400"
   },
   {
     id: 3,
-    title: "Power BI Data Analyst",
-    issuer: "Microsoft Learn",
-    year: "2024",
-    link: "https://learn.microsoft.com",
-    color: "border-yellow-500/30",
-    bg: "from-yellow-500/15 to-amber-500/10",
-    iconColor: "text-yellow-400"
+    title: "Beginning C++ Programming: From Beginner to Beyond",
+    issuer: "Udemy",
+    date: "March 2024",
+    link: "https://r0.image2url.com/images/1764317022982-412341b5-f0bd-4d10-8300-3ca838c8af81.jpeg",
+    color: "border-rose-500/30",
+    bg: "from-rose-500/15 to-pink-500/10",
+    iconColor: "text-rose-400"
   },
   {
     id: 4,
-    title: "Full Stack Web Development",
-    issuer: "Udemy",
-    year: "2023",
-    link: "https://udemy.com",
-    color: "border-purple-500/30",
-    bg: "from-purple-500/15 to-pink-500/10",
-    iconColor: "text-purple-400"
+    title: "C++ Programming (OOPS and DSA)",
+    issuer: "CSE Pathshala",
+    date: "August 2025",
+    link: "https://r0.image2url.com/images/1764317286646-6c8e20d9-79bf-444b-bfad-2558ef6bf5bf.jpeg",
+    color: "border-emerald-500/30",
+    bg: "from-emerald-500/15 to-teal-500/10",
+    iconColor: "text-emerald-400"
   }
 ];
 function Certificates() {
@@ -22600,7 +22741,6 @@ function Certificates() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4", children: certificates.map((cert, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
         motion.div,
         {
-          "data-ocid": `cert.card.${i + 1}`,
           initial: { opacity: 0, y: 30 },
           whileInView: { opacity: 1, y: 0 },
           viewport: { once: true, margin: "-80px" },
@@ -22608,25 +22748,23 @@ function Certificates() {
           whileHover: { y: -5, scale: 1.02 },
           className: `glass rounded-xl p-5 bg-gradient-to-br ${cert.bg} border ${cert.color} transition-all duration-300 cursor-default`,
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between mb-4", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center glass", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FiAward, { size: 18, className: cert.iconColor }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "a",
-                {
-                  href: cert.link,
-                  target: "_blank",
-                  rel: "noopener noreferrer",
-                  className: "flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors",
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(FiExternalLink, { size: 12 }),
-                    "View"
-                  ]
-                }
-              )
-            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-start justify-between mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center glass", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FiAward, { size: 18, className: cert.iconColor }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-display font-semibold text-foreground text-sm leading-snug mb-1", children: cert.title }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground text-xs mb-1", children: cert.issuer }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground/70", children: cert.year })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground/70", children: cert.date }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "a",
+              {
+                href: cert.link,
+                target: "_blank",
+                rel: "noopener noreferrer",
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium glass border border-border/60 text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-200",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(FiExternalLink, { size: 12 }),
+                  "View Certificate"
+                ]
+              }
+            ) })
           ]
         },
         cert.id
@@ -23001,7 +23139,7 @@ const fractionRegex = /^\d+\/\d+$/;
 const stringLengths = /* @__PURE__ */ new Set(["px", "full", "screen"]);
 const tshirtUnitRegex = /^(\d+(\.\d+)?)?(xs|sm|md|lg|xl)$/;
 const lengthUnitRegex = /\d+(%|px|r?em|[sdl]?v([hwib]|min|max)|pt|pc|in|cm|mm|cap|ch|ex|r?lh|cq(w|h|i|b|min|max))|\b(calc|min|max|clamp)\(.+\)|^0$/;
-const colorFunctionRegex = /^(rgba?|hsla?|hwb|(ok)?(lab|lch))\(.+\)$/;
+const colorFunctionRegex = /^(rgba?|hsla?|hwb|(ok)?(lab|lch)|color-mix)\(.+\)$/;
 const shadowRegex = /^(inset_)?-?((\d+)?\.?(\d+)[a-z]+|0)_-?((\d+)?\.?(\d+)[a-z]+|0)/;
 const imageRegex = /^(url|image|image-set|cross-fade|element|(repeating-)?(linear|radial|conic)-gradient)\(.+\)$/;
 const isLength = (value) => isNumber(value) || stringLengths.has(value) || fractionRegex.test(value);
@@ -23050,7 +23188,7 @@ const getDefaultConfig = () => {
   const contrast = fromTheme("contrast");
   const grayscale = fromTheme("grayscale");
   const hueRotate = fromTheme("hueRotate");
-  const invert2 = fromTheme("invert");
+  const invert = fromTheme("invert");
   const gap = fromTheme("gap");
   const gradientColorStops = fromTheme("gradientColorStops");
   const gradientColorStopPositions = fromTheme("gradientColorStopPositions");
@@ -24535,7 +24673,7 @@ const getDefaultConfig = () => {
        * @see https://tailwindcss.com/docs/invert
        */
       invert: [{
-        invert: [invert2]
+        invert: [invert]
       }],
       /**
        * Saturate
@@ -24599,7 +24737,7 @@ const getDefaultConfig = () => {
        * @see https://tailwindcss.com/docs/backdrop-invert
        */
       "backdrop-invert": [{
-        "backdrop-invert": [invert2]
+        "backdrop-invert": [invert]
       }],
       /**
        * Backdrop Opacity
@@ -25156,11 +25294,22 @@ function composeRefs(...refs) {
     }
   };
 }
+var REACT_LAZY_TYPE = Symbol.for("react.lazy");
+var use = React$3[" use ".trim().toString()];
+function isPromiseLike(value) {
+  return typeof value === "object" && value !== null && "then" in value;
+}
+function isLazyComponent(element) {
+  return element != null && typeof element === "object" && "$$typeof" in element && element.$$typeof === REACT_LAZY_TYPE && "_payload" in element && isPromiseLike(element._payload);
+}
 // @__NO_SIDE_EFFECTS__
 function createSlot(ownerName) {
   const SlotClone = /* @__PURE__ */ createSlotClone(ownerName);
   const Slot2 = reactExports.forwardRef((props, forwardedRef) => {
-    const { children, ...slotProps } = props;
+    let { children, ...slotProps } = props;
+    if (isLazyComponent(children) && typeof use === "function") {
+      children = use(children._payload);
+    }
     const childrenArray = reactExports.Children.toArray(children);
     const slottable = childrenArray.find(isSlottable);
     if (slottable) {
@@ -25184,7 +25333,10 @@ var Slot = /* @__PURE__ */ createSlot("Slot");
 // @__NO_SIDE_EFFECTS__
 function createSlotClone(ownerName) {
   const SlotClone = reactExports.forwardRef((props, forwardedRef) => {
-    const { children, ...slotProps } = props;
+    let { children, ...slotProps } = props;
+    if (isLazyComponent(children) && typeof use === "function") {
+      children = use(children._payload);
+    }
     if (reactExports.isValidElement(children)) {
       const childrenRef = getElementRef(children);
       const props2 = mergeProps(slotProps, children.props);
@@ -25342,8 +25494,8 @@ const contactInfo = [
   {
     icon: FiPhone,
     label: "Phone",
-    value: "+91 XXXXX XXXXX",
-    href: "tel:+91XXXXXXXXXX"
+    value: "+91 74704 22525",
+    href: "tel:+917470422525"
   }
 ];
 function validate(form) {
@@ -25598,7 +25750,7 @@ const education = [
     degree: "B.Tech in Computer Science & Engineering",
     institution: "University Institute of Technology",
     duration: "2021 – 2025",
-    score: "CGPA: 8.5 / 10",
+    score: "CGPA: 7.02 / 10",
     details: "Relevant coursework: Data Structures, Algorithms, DBMS, Operating Systems, Machine Learning, Web Development",
     color: "border-l-primary",
     dotColor: "bg-primary",
@@ -25800,7 +25952,7 @@ const socials = [
   },
   {
     icon: FiPhone,
-    href: "tel:+1234567890",
+    href: "tel:+917470422525",
     label: "Phone",
     color: "hover:text-green-400"
   }
@@ -25811,9 +25963,7 @@ function Hero() {
     (_a2 = document.getElementById("skills")) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth" });
   };
   const handleDownload = () => {
-    alert(
-      "Resume download link not configured yet. Please add your resume PDF URL."
-    );
+    window.open("https://drive.google.com/uc?export=download&id=1p-d76P5xS2FHdEfeaZptkI_Gjpxb_Z34", "_blank");
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "section",
@@ -25854,116 +26004,143 @@ function Hero() {
             }
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16 text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             motion.div,
             {
               variants: container,
               initial: "hidden",
               animate: "show",
-              className: "space-y-6",
+              className: "flex flex-col-reverse md:flex-row items-center justify-between gap-12",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  motion.div,
-                  {
-                    variants: item,
-                    className: "inline-flex items-center gap-2",
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "px-4 py-1.5 rounded-full text-xs font-medium glass border border-primary/30 text-primary", children: "✨ Available for opportunities" })
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  motion.h1,
-                  {
-                    variants: item,
-                    className: "font-display text-5xl sm:text-7xl md:text-8xl font-bold tracking-tight leading-none",
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-foreground", children: "Manasvi" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-gradient-indigo", children: "Tiwari" })
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  motion.p,
-                  {
-                    variants: item,
-                    className: "text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto leading-relaxed font-medium",
-                    children: [
-                      "CSE Undergrad • Full-Stack Developer & Data Science Enthusiast",
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-foreground/70", children: "DSA • ML • Power BI" })
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  motion.div,
-                  {
-                    variants: item,
-                    className: "flex items-center justify-center gap-4",
-                    children: socials.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      motion.a,
-                      {
-                        href: s.href,
-                        target: "_blank",
-                        rel: "noopener noreferrer",
-                        "aria-label": s.label,
-                        whileHover: { scale: 1.2, y: -3 },
-                        whileTap: { scale: 0.95 },
-                        className: `w-12 h-12 rounded-xl glass flex items-center justify-center text-muted-foreground transition-colors duration-200 ${s.color}`,
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(s.icon, { size: 20 })
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-center md:text-left space-y-6", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(motion.div, { variants: item, className: "inline-flex items-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "px-4 py-1.5 rounded-full text-xs font-medium glass border border-primary/30 text-primary", children: "✨ Available for opportunities" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    motion.h1,
+                    {
+                      variants: item,
+                      className: "font-display text-5xl sm:text-7xl md:text-8xl font-bold tracking-tight leading-none",
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-foreground", children: "Manasvi" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-gradient-indigo", children: "Tiwari" })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    motion.p,
+                    {
+                      variants: item,
+                      className: "text-muted-foreground text-base sm:text-lg max-w-2xl leading-relaxed font-medium",
+                      children: [
+                        "CSE Undergrad • Full-Stack Developer & Data Science Enthusiast",
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-foreground/70", children: "DSA • ML • Power BI" })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(motion.div, { variants: item, className: "flex items-center justify-center md:justify-start gap-4", children: socials.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    motion.a,
+                    {
+                      href: s.href,
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                      "aria-label": s.label,
+                      whileHover: { scale: 1.2, y: -3 },
+                      whileTap: { scale: 0.95 },
+                      className: `w-12 h-12 rounded-xl glass flex items-center justify-center text-muted-foreground transition-colors duration-200 ${s.color}`,
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(s.icon, { size: 20 })
+                    },
+                    s.label
+                  )) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    motion.div,
+                    {
+                      variants: item,
+                      className: "flex flex-col sm:flex-row items-center justify-center md:justify-start gap-4 pt-4",
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          motion.button,
+                          {
+                            "data-ocid": "hero.primary_button",
+                            type: "button",
+                            whileHover: { scale: 1.04 },
+                            whileTap: { scale: 0.97 },
+                            onClick: handleScroll,
+                            className: "group inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-white animate-gradient",
+                            style: {
+                              background: "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310), oklch(0.72 0.20 195))"
+                            },
+                            children: [
+                              "View My Work",
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(FiArrowDown, { size: 18, className: "transition-transform group-hover:translate-y-1" })
+                            ]
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          motion.button,
+                          {
+                            "data-ocid": "hero.secondary_button",
+                            type: "button",
+                            whileHover: { scale: 1.04 },
+                            whileTap: { scale: 0.97 },
+                            onClick: handleDownload,
+                            className: "inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold glass border border-primary/30 text-foreground hover:border-primary/60 transition-all duration-300",
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(FiDownload, { size: 18 }),
+                              "Download Resume"
+                            ]
+                          }
+                        )
+                      ]
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(motion.div, { variants: item, className: "flex-shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      className: "absolute inset-0 rounded-full blur-2xl opacity-40",
+                      style: {
+                        background: "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310))"
+                      }
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "div",
+                    {
+                      className: "relative w-full h-full rounded-full p-1",
+                      style: {
+                        background: "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310), oklch(0.72 0.20 195))"
                       },
-                      s.label
-                    ))
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  motion.div,
-                  {
-                    variants: item,
-                    className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-4",
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        motion.button,
-                        {
-                          "data-ocid": "hero.primary_button",
-                          type: "button",
-                          whileHover: { scale: 1.04 },
-                          whileTap: { scale: 0.97 },
-                          onClick: handleScroll,
-                          className: "group inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-white animate-gradient",
-                          style: {
-                            background: "linear-gradient(135deg, oklch(0.60 0.22 270), oklch(0.65 0.22 310), oklch(0.72 0.20 195))"
-                          },
-                          children: [
-                            "View My Work",
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                              FiArrowDown,
-                              {
-                                size: 18,
-                                className: "transition-transform group-hover:translate-y-1"
-                              }
-                            )
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        motion.button,
-                        {
-                          "data-ocid": "hero.secondary_button",
-                          type: "button",
-                          whileHover: { scale: 1.04 },
-                          whileTap: { scale: 0.97 },
-                          onClick: handleDownload,
-                          className: "inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold glass border border-primary/30 text-foreground hover:border-primary/60 transition-all duration-300",
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(FiDownload, { size: 18 }),
-                            "Download Resume"
-                          ]
-                        }
-                      )
-                    ]
-                  }
-                )
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "img",
+                          {
+                            src: "./public/photo.jpg",
+                            alt: "Manasvi Tiwari",
+                            className: "w-full h-full rounded-full object-cover",
+                            onError: (e) => {
+                              e.currentTarget.style.display = "none";
+                              e.currentTarget.nextElementSibling.style.display = "flex";
+                            }
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "div",
+                          {
+                            className: "absolute inset-1 rounded-full hidden items-center justify-center text-4xl font-bold text-white",
+                            style: {
+                              background: "oklch(0.15 0.02 270)",
+                              display: "none"
+                            },
+                            children: "MT"
+                          }
+                        )
+                      ]
+                    }
+                  )
+                ] }) })
               ]
             }
           ),
@@ -26526,5830 +26703,10 @@ function App() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Toaster, { richColors: true, position: "top-right" })
   ] }) });
 }
-const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
-const lookupTable = /* @__PURE__ */ Object.create(null);
-for (let i = 0; i < alphabet.length; i++) {
-  lookupTable[alphabet[i]] = i;
-}
-lookupTable["0"] = lookupTable.o;
-lookupTable["1"] = lookupTable.i;
-function base32Encode(input) {
-  let skip = 0;
-  let bits = 0;
-  let output = "";
-  function encodeByte(byte) {
-    if (skip < 0) {
-      bits |= byte >> -skip;
-    } else {
-      bits = byte << skip & 248;
-    }
-    if (skip > 3) {
-      skip -= 8;
-      return 1;
-    }
-    if (skip < 4) {
-      output += alphabet[bits >> 3];
-      skip += 5;
-    }
-    return 0;
-  }
-  for (let i = 0; i < input.length; ) {
-    i += encodeByte(input[i]);
-  }
-  return output + (skip < 0 ? alphabet[bits >> 3] : "");
-}
-function base32Decode(input) {
-  let skip = 0;
-  let byte = 0;
-  const output = new Uint8Array(input.length * 4 / 3 | 0);
-  let o = 0;
-  function decodeChar(char) {
-    let val = lookupTable[char.toLowerCase()];
-    if (val === void 0) {
-      throw new Error(`Invalid character: ${JSON.stringify(char)}`);
-    }
-    val <<= 3;
-    byte |= val >>> skip;
-    skip += 5;
-    if (skip >= 8) {
-      output[o++] = byte;
-      skip -= 8;
-      if (skip > 0) {
-        byte = val << 5 - skip & 255;
-      } else {
-        byte = 0;
-      }
-    }
-  }
-  for (const c of input) {
-    decodeChar(c);
-  }
-  return output.slice(0, o);
-}
-const lookUpTable = new Uint32Array([
-  0,
-  1996959894,
-  3993919788,
-  2567524794,
-  124634137,
-  1886057615,
-  3915621685,
-  2657392035,
-  249268274,
-  2044508324,
-  3772115230,
-  2547177864,
-  162941995,
-  2125561021,
-  3887607047,
-  2428444049,
-  498536548,
-  1789927666,
-  4089016648,
-  2227061214,
-  450548861,
-  1843258603,
-  4107580753,
-  2211677639,
-  325883990,
-  1684777152,
-  4251122042,
-  2321926636,
-  335633487,
-  1661365465,
-  4195302755,
-  2366115317,
-  997073096,
-  1281953886,
-  3579855332,
-  2724688242,
-  1006888145,
-  1258607687,
-  3524101629,
-  2768942443,
-  901097722,
-  1119000684,
-  3686517206,
-  2898065728,
-  853044451,
-  1172266101,
-  3705015759,
-  2882616665,
-  651767980,
-  1373503546,
-  3369554304,
-  3218104598,
-  565507253,
-  1454621731,
-  3485111705,
-  3099436303,
-  671266974,
-  1594198024,
-  3322730930,
-  2970347812,
-  795835527,
-  1483230225,
-  3244367275,
-  3060149565,
-  1994146192,
-  31158534,
-  2563907772,
-  4023717930,
-  1907459465,
-  112637215,
-  2680153253,
-  3904427059,
-  2013776290,
-  251722036,
-  2517215374,
-  3775830040,
-  2137656763,
-  141376813,
-  2439277719,
-  3865271297,
-  1802195444,
-  476864866,
-  2238001368,
-  4066508878,
-  1812370925,
-  453092731,
-  2181625025,
-  4111451223,
-  1706088902,
-  314042704,
-  2344532202,
-  4240017532,
-  1658658271,
-  366619977,
-  2362670323,
-  4224994405,
-  1303535960,
-  984961486,
-  2747007092,
-  3569037538,
-  1256170817,
-  1037604311,
-  2765210733,
-  3554079995,
-  1131014506,
-  879679996,
-  2909243462,
-  3663771856,
-  1141124467,
-  855842277,
-  2852801631,
-  3708648649,
-  1342533948,
-  654459306,
-  3188396048,
-  3373015174,
-  1466479909,
-  544179635,
-  3110523913,
-  3462522015,
-  1591671054,
-  702138776,
-  2966460450,
-  3352799412,
-  1504918807,
-  783551873,
-  3082640443,
-  3233442989,
-  3988292384,
-  2596254646,
-  62317068,
-  1957810842,
-  3939845945,
-  2647816111,
-  81470997,
-  1943803523,
-  3814918930,
-  2489596804,
-  225274430,
-  2053790376,
-  3826175755,
-  2466906013,
-  167816743,
-  2097651377,
-  4027552580,
-  2265490386,
-  503444072,
-  1762050814,
-  4150417245,
-  2154129355,
-  426522225,
-  1852507879,
-  4275313526,
-  2312317920,
-  282753626,
-  1742555852,
-  4189708143,
-  2394877945,
-  397917763,
-  1622183637,
-  3604390888,
-  2714866558,
-  953729732,
-  1340076626,
-  3518719985,
-  2797360999,
-  1068828381,
-  1219638859,
-  3624741850,
-  2936675148,
-  906185462,
-  1090812512,
-  3747672003,
-  2825379669,
-  829329135,
-  1181335161,
-  3412177804,
-  3160834842,
-  628085408,
-  1382605366,
-  3423369109,
-  3138078467,
-  570562233,
-  1426400815,
-  3317316542,
-  2998733608,
-  733239954,
-  1555261956,
-  3268935591,
-  3050360625,
-  752459403,
-  1541320221,
-  2607071920,
-  3965973030,
-  1969922972,
-  40735498,
-  2617837225,
-  3943577151,
-  1913087877,
-  83908371,
-  2512341634,
-  3803740692,
-  2075208622,
-  213261112,
-  2463272603,
-  3855990285,
-  2094854071,
-  198958881,
-  2262029012,
-  4057260610,
-  1759359992,
-  534414190,
-  2176718541,
-  4139329115,
-  1873836001,
-  414664567,
-  2282248934,
-  4279200368,
-  1711684554,
-  285281116,
-  2405801727,
-  4167216745,
-  1634467795,
-  376229701,
-  2685067896,
-  3608007406,
-  1308918612,
-  956543938,
-  2808555105,
-  3495958263,
-  1231636301,
-  1047427035,
-  2932959818,
-  3654703836,
-  1088359270,
-  936918e3,
-  2847714899,
-  3736837829,
-  1202900863,
-  817233897,
-  3183342108,
-  3401237130,
-  1404277552,
-  615818150,
-  3134207493,
-  3453421203,
-  1423857449,
-  601450431,
-  3009837614,
-  3294710456,
-  1567103746,
-  711928724,
-  3020668471,
-  3272380065,
-  1510334235,
-  755167117
-]);
-function getCrc32(buf) {
-  let crc = -1;
-  for (let i = 0; i < buf.length; i++) {
-    const byte = buf[i];
-    const t = (byte ^ crc) & 255;
-    crc = lookUpTable[t] ^ crc >>> 8;
-  }
-  return (crc ^ -1) >>> 0;
-}
-const crypto$1 = typeof globalThis === "object" && "crypto" in globalThis ? globalThis.crypto : void 0;
-/*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-function isBytes(a) {
-  return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
-}
-function anumber(n) {
-  if (!Number.isSafeInteger(n) || n < 0)
-    throw new Error("positive integer expected, got " + n);
-}
-function abytes(b, ...lengths) {
-  if (!isBytes(b))
-    throw new Error("Uint8Array expected");
-  if (lengths.length > 0 && !lengths.includes(b.length))
-    throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
-}
-function aexists(instance, checkFinished = true) {
-  if (instance.destroyed)
-    throw new Error("Hash instance has been destroyed");
-  if (checkFinished && instance.finished)
-    throw new Error("Hash#digest() has already been called");
-}
-function aoutput(out, instance) {
-  abytes(out);
-  const min = instance.outputLen;
-  if (out.length < min) {
-    throw new Error("digestInto() expects output buffer of length at least " + min);
-  }
-}
-function clean(...arrays) {
-  for (let i = 0; i < arrays.length; i++) {
-    arrays[i].fill(0);
-  }
-}
-function createView(arr) {
-  return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
-}
-function rotr(word, shift) {
-  return word << 32 - shift | word >>> shift;
-}
-const hasHexBuiltin = /* @__PURE__ */ (() => (
-  // @ts-ignore
-  typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
-))();
-const hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
-function bytesToHex(bytes) {
-  abytes(bytes);
-  if (hasHexBuiltin)
-    return bytes.toHex();
-  let hex2 = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex2 += hexes[bytes[i]];
-  }
-  return hex2;
-}
-const asciis = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
-function asciiToBase16(ch) {
-  if (ch >= asciis._0 && ch <= asciis._9)
-    return ch - asciis._0;
-  if (ch >= asciis.A && ch <= asciis.F)
-    return ch - (asciis.A - 10);
-  if (ch >= asciis.a && ch <= asciis.f)
-    return ch - (asciis.a - 10);
-  return;
-}
-function hexToBytes(hex2) {
-  if (typeof hex2 !== "string")
-    throw new Error("hex string expected, got " + typeof hex2);
-  if (hasHexBuiltin)
-    return Uint8Array.fromHex(hex2);
-  const hl = hex2.length;
-  const al = hl / 2;
-  if (hl % 2)
-    throw new Error("hex string expected, got unpadded hex of length " + hl);
-  const array = new Uint8Array(al);
-  for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
-    const n1 = asciiToBase16(hex2.charCodeAt(hi));
-    const n2 = asciiToBase16(hex2.charCodeAt(hi + 1));
-    if (n1 === void 0 || n2 === void 0) {
-      const char = hex2[hi] + hex2[hi + 1];
-      throw new Error('hex string expected, got non-hex character "' + char + '" at index ' + hi);
-    }
-    array[ai] = n1 * 16 + n2;
-  }
-  return array;
-}
-function utf8ToBytes(str) {
-  if (typeof str !== "string")
-    throw new Error("string expected");
-  return new Uint8Array(new TextEncoder().encode(str));
-}
-function toBytes(data) {
-  if (typeof data === "string")
-    data = utf8ToBytes(data);
-  abytes(data);
-  return data;
-}
-function concatBytes(...arrays) {
-  let sum = 0;
-  for (let i = 0; i < arrays.length; i++) {
-    const a = arrays[i];
-    abytes(a);
-    sum += a.length;
-  }
-  const res = new Uint8Array(sum);
-  for (let i = 0, pad = 0; i < arrays.length; i++) {
-    const a = arrays[i];
-    res.set(a, pad);
-    pad += a.length;
-  }
-  return res;
-}
-class Hash {
-}
-function createHasher(hashCons) {
-  const hashC = (msg) => hashCons().update(toBytes(msg)).digest();
-  const tmp = hashCons();
-  hashC.outputLen = tmp.outputLen;
-  hashC.blockLen = tmp.blockLen;
-  hashC.create = () => hashCons();
-  return hashC;
-}
-function randomBytes(bytesLength = 32) {
-  if (crypto$1 && typeof crypto$1.getRandomValues === "function") {
-    return crypto$1.getRandomValues(new Uint8Array(bytesLength));
-  }
-  if (crypto$1 && typeof crypto$1.randomBytes === "function") {
-    return Uint8Array.from(crypto$1.randomBytes(bytesLength));
-  }
-  throw new Error("crypto.getRandomValues must be defined");
-}
-function setBigUint64(view, byteOffset, value, isLE) {
-  if (typeof view.setBigUint64 === "function")
-    return view.setBigUint64(byteOffset, value, isLE);
-  const _32n2 = BigInt(32);
-  const _u32_max = BigInt(4294967295);
-  const wh = Number(value >> _32n2 & _u32_max);
-  const wl = Number(value & _u32_max);
-  const h = isLE ? 4 : 0;
-  const l = isLE ? 0 : 4;
-  view.setUint32(byteOffset + h, wh, isLE);
-  view.setUint32(byteOffset + l, wl, isLE);
-}
-function Chi(a, b, c) {
-  return a & b ^ ~a & c;
-}
-function Maj(a, b, c) {
-  return a & b ^ a & c ^ b & c;
-}
-class HashMD extends Hash {
-  constructor(blockLen, outputLen, padOffset, isLE) {
-    super();
-    this.finished = false;
-    this.length = 0;
-    this.pos = 0;
-    this.destroyed = false;
-    this.blockLen = blockLen;
-    this.outputLen = outputLen;
-    this.padOffset = padOffset;
-    this.isLE = isLE;
-    this.buffer = new Uint8Array(blockLen);
-    this.view = createView(this.buffer);
-  }
-  update(data) {
-    aexists(this);
-    data = toBytes(data);
-    abytes(data);
-    const { view, buffer, blockLen } = this;
-    const len = data.length;
-    for (let pos = 0; pos < len; ) {
-      const take = Math.min(blockLen - this.pos, len - pos);
-      if (take === blockLen) {
-        const dataView = createView(data);
-        for (; blockLen <= len - pos; pos += blockLen)
-          this.process(dataView, pos);
-        continue;
-      }
-      buffer.set(data.subarray(pos, pos + take), this.pos);
-      this.pos += take;
-      pos += take;
-      if (this.pos === blockLen) {
-        this.process(view, 0);
-        this.pos = 0;
-      }
-    }
-    this.length += data.length;
-    this.roundClean();
-    return this;
-  }
-  digestInto(out) {
-    aexists(this);
-    aoutput(out, this);
-    this.finished = true;
-    const { buffer, view, blockLen, isLE } = this;
-    let { pos } = this;
-    buffer[pos++] = 128;
-    clean(this.buffer.subarray(pos));
-    if (this.padOffset > blockLen - pos) {
-      this.process(view, 0);
-      pos = 0;
-    }
-    for (let i = pos; i < blockLen; i++)
-      buffer[i] = 0;
-    setBigUint64(view, blockLen - 8, BigInt(this.length * 8), isLE);
-    this.process(view, 0);
-    const oview = createView(out);
-    const len = this.outputLen;
-    if (len % 4)
-      throw new Error("_sha2: outputLen should be aligned to 32bit");
-    const outLen = len / 4;
-    const state = this.get();
-    if (outLen > state.length)
-      throw new Error("_sha2: outputLen bigger than state");
-    for (let i = 0; i < outLen; i++)
-      oview.setUint32(4 * i, state[i], isLE);
-  }
-  digest() {
-    const { buffer, outputLen } = this;
-    this.digestInto(buffer);
-    const res = buffer.slice(0, outputLen);
-    this.destroy();
-    return res;
-  }
-  _cloneInto(to) {
-    to || (to = new this.constructor());
-    to.set(...this.get());
-    const { blockLen, buffer, length, finished, destroyed, pos } = this;
-    to.destroyed = destroyed;
-    to.finished = finished;
-    to.length = length;
-    to.pos = pos;
-    if (length % blockLen)
-      to.buffer.set(buffer);
-    return to;
-  }
-  clone() {
-    return this._cloneInto();
-  }
-}
-const SHA256_IV = /* @__PURE__ */ Uint32Array.from([
-  1779033703,
-  3144134277,
-  1013904242,
-  2773480762,
-  1359893119,
-  2600822924,
-  528734635,
-  1541459225
-]);
-const SHA224_IV = /* @__PURE__ */ Uint32Array.from([
-  3238371032,
-  914150663,
-  812702999,
-  4144912697,
-  4290775857,
-  1750603025,
-  1694076839,
-  3204075428
-]);
-const SHA512_IV = /* @__PURE__ */ Uint32Array.from([
-  1779033703,
-  4089235720,
-  3144134277,
-  2227873595,
-  1013904242,
-  4271175723,
-  2773480762,
-  1595750129,
-  1359893119,
-  2917565137,
-  2600822924,
-  725511199,
-  528734635,
-  4215389547,
-  1541459225,
-  327033209
-]);
-const U32_MASK64 = /* @__PURE__ */ BigInt(2 ** 32 - 1);
-const _32n = /* @__PURE__ */ BigInt(32);
-function fromBig(n, le2 = false) {
-  if (le2)
-    return { h: Number(n & U32_MASK64), l: Number(n >> _32n & U32_MASK64) };
-  return { h: Number(n >> _32n & U32_MASK64) | 0, l: Number(n & U32_MASK64) | 0 };
-}
-function split(lst, le2 = false) {
-  const len = lst.length;
-  let Ah = new Uint32Array(len);
-  let Al = new Uint32Array(len);
-  for (let i = 0; i < len; i++) {
-    const { h, l } = fromBig(lst[i], le2);
-    [Ah[i], Al[i]] = [h, l];
-  }
-  return [Ah, Al];
-}
-const shrSH = (h, _l, s) => h >>> s;
-const shrSL = (h, l, s) => h << 32 - s | l >>> s;
-const rotrSH = (h, l, s) => h >>> s | l << 32 - s;
-const rotrSL = (h, l, s) => h << 32 - s | l >>> s;
-const rotrBH = (h, l, s) => h << 64 - s | l >>> s - 32;
-const rotrBL = (h, l, s) => h >>> s - 32 | l << 64 - s;
-function add(Ah, Al, Bh, Bl) {
-  const l = (Al >>> 0) + (Bl >>> 0);
-  return { h: Ah + Bh + (l / 2 ** 32 | 0) | 0, l: l | 0 };
-}
-const add3L = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0);
-const add3H = (low, Ah, Bh, Ch) => Ah + Bh + Ch + (low / 2 ** 32 | 0) | 0;
-const add4L = (Al, Bl, Cl, Dl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0);
-const add4H = (low, Ah, Bh, Ch, Dh) => Ah + Bh + Ch + Dh + (low / 2 ** 32 | 0) | 0;
-const add5L = (Al, Bl, Cl, Dl, El) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0) + (El >>> 0);
-const add5H = (low, Ah, Bh, Ch, Dh, Eh) => Ah + Bh + Ch + Dh + Eh + (low / 2 ** 32 | 0) | 0;
-const SHA256_K = /* @__PURE__ */ Uint32Array.from([
-  1116352408,
-  1899447441,
-  3049323471,
-  3921009573,
-  961987163,
-  1508970993,
-  2453635748,
-  2870763221,
-  3624381080,
-  310598401,
-  607225278,
-  1426881987,
-  1925078388,
-  2162078206,
-  2614888103,
-  3248222580,
-  3835390401,
-  4022224774,
-  264347078,
-  604807628,
-  770255983,
-  1249150122,
-  1555081692,
-  1996064986,
-  2554220882,
-  2821834349,
-  2952996808,
-  3210313671,
-  3336571891,
-  3584528711,
-  113926993,
-  338241895,
-  666307205,
-  773529912,
-  1294757372,
-  1396182291,
-  1695183700,
-  1986661051,
-  2177026350,
-  2456956037,
-  2730485921,
-  2820302411,
-  3259730800,
-  3345764771,
-  3516065817,
-  3600352804,
-  4094571909,
-  275423344,
-  430227734,
-  506948616,
-  659060556,
-  883997877,
-  958139571,
-  1322822218,
-  1537002063,
-  1747873779,
-  1955562222,
-  2024104815,
-  2227730452,
-  2361852424,
-  2428436474,
-  2756734187,
-  3204031479,
-  3329325298
-]);
-const SHA256_W = /* @__PURE__ */ new Uint32Array(64);
-class SHA256 extends HashMD {
-  constructor(outputLen = 32) {
-    super(64, outputLen, 8, false);
-    this.A = SHA256_IV[0] | 0;
-    this.B = SHA256_IV[1] | 0;
-    this.C = SHA256_IV[2] | 0;
-    this.D = SHA256_IV[3] | 0;
-    this.E = SHA256_IV[4] | 0;
-    this.F = SHA256_IV[5] | 0;
-    this.G = SHA256_IV[6] | 0;
-    this.H = SHA256_IV[7] | 0;
-  }
-  get() {
-    const { A, B, C, D, E, F, G, H } = this;
-    return [A, B, C, D, E, F, G, H];
-  }
-  // prettier-ignore
-  set(A, B, C, D, E, F, G, H) {
-    this.A = A | 0;
-    this.B = B | 0;
-    this.C = C | 0;
-    this.D = D | 0;
-    this.E = E | 0;
-    this.F = F | 0;
-    this.G = G | 0;
-    this.H = H | 0;
-  }
-  process(view, offset) {
-    for (let i = 0; i < 16; i++, offset += 4)
-      SHA256_W[i] = view.getUint32(offset, false);
-    for (let i = 16; i < 64; i++) {
-      const W15 = SHA256_W[i - 15];
-      const W2 = SHA256_W[i - 2];
-      const s0 = rotr(W15, 7) ^ rotr(W15, 18) ^ W15 >>> 3;
-      const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
-      SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
-    }
-    let { A, B, C, D, E, F, G, H } = this;
-    for (let i = 0; i < 64; i++) {
-      const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
-      const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
-      const sigma0 = rotr(A, 2) ^ rotr(A, 13) ^ rotr(A, 22);
-      const T2 = sigma0 + Maj(A, B, C) | 0;
-      H = G;
-      G = F;
-      F = E;
-      E = D + T1 | 0;
-      D = C;
-      C = B;
-      B = A;
-      A = T1 + T2 | 0;
-    }
-    A = A + this.A | 0;
-    B = B + this.B | 0;
-    C = C + this.C | 0;
-    D = D + this.D | 0;
-    E = E + this.E | 0;
-    F = F + this.F | 0;
-    G = G + this.G | 0;
-    H = H + this.H | 0;
-    this.set(A, B, C, D, E, F, G, H);
-  }
-  roundClean() {
-    clean(SHA256_W);
-  }
-  destroy() {
-    this.set(0, 0, 0, 0, 0, 0, 0, 0);
-    clean(this.buffer);
-  }
-}
-class SHA224 extends SHA256 {
-  constructor() {
-    super(28);
-    this.A = SHA224_IV[0] | 0;
-    this.B = SHA224_IV[1] | 0;
-    this.C = SHA224_IV[2] | 0;
-    this.D = SHA224_IV[3] | 0;
-    this.E = SHA224_IV[4] | 0;
-    this.F = SHA224_IV[5] | 0;
-    this.G = SHA224_IV[6] | 0;
-    this.H = SHA224_IV[7] | 0;
-  }
-}
-const K512 = /* @__PURE__ */ (() => split([
-  "0x428a2f98d728ae22",
-  "0x7137449123ef65cd",
-  "0xb5c0fbcfec4d3b2f",
-  "0xe9b5dba58189dbbc",
-  "0x3956c25bf348b538",
-  "0x59f111f1b605d019",
-  "0x923f82a4af194f9b",
-  "0xab1c5ed5da6d8118",
-  "0xd807aa98a3030242",
-  "0x12835b0145706fbe",
-  "0x243185be4ee4b28c",
-  "0x550c7dc3d5ffb4e2",
-  "0x72be5d74f27b896f",
-  "0x80deb1fe3b1696b1",
-  "0x9bdc06a725c71235",
-  "0xc19bf174cf692694",
-  "0xe49b69c19ef14ad2",
-  "0xefbe4786384f25e3",
-  "0x0fc19dc68b8cd5b5",
-  "0x240ca1cc77ac9c65",
-  "0x2de92c6f592b0275",
-  "0x4a7484aa6ea6e483",
-  "0x5cb0a9dcbd41fbd4",
-  "0x76f988da831153b5",
-  "0x983e5152ee66dfab",
-  "0xa831c66d2db43210",
-  "0xb00327c898fb213f",
-  "0xbf597fc7beef0ee4",
-  "0xc6e00bf33da88fc2",
-  "0xd5a79147930aa725",
-  "0x06ca6351e003826f",
-  "0x142929670a0e6e70",
-  "0x27b70a8546d22ffc",
-  "0x2e1b21385c26c926",
-  "0x4d2c6dfc5ac42aed",
-  "0x53380d139d95b3df",
-  "0x650a73548baf63de",
-  "0x766a0abb3c77b2a8",
-  "0x81c2c92e47edaee6",
-  "0x92722c851482353b",
-  "0xa2bfe8a14cf10364",
-  "0xa81a664bbc423001",
-  "0xc24b8b70d0f89791",
-  "0xc76c51a30654be30",
-  "0xd192e819d6ef5218",
-  "0xd69906245565a910",
-  "0xf40e35855771202a",
-  "0x106aa07032bbd1b8",
-  "0x19a4c116b8d2d0c8",
-  "0x1e376c085141ab53",
-  "0x2748774cdf8eeb99",
-  "0x34b0bcb5e19b48a8",
-  "0x391c0cb3c5c95a63",
-  "0x4ed8aa4ae3418acb",
-  "0x5b9cca4f7763e373",
-  "0x682e6ff3d6b2b8a3",
-  "0x748f82ee5defb2fc",
-  "0x78a5636f43172f60",
-  "0x84c87814a1f0ab72",
-  "0x8cc702081a6439ec",
-  "0x90befffa23631e28",
-  "0xa4506cebde82bde9",
-  "0xbef9a3f7b2c67915",
-  "0xc67178f2e372532b",
-  "0xca273eceea26619c",
-  "0xd186b8c721c0c207",
-  "0xeada7dd6cde0eb1e",
-  "0xf57d4f7fee6ed178",
-  "0x06f067aa72176fba",
-  "0x0a637dc5a2c898a6",
-  "0x113f9804bef90dae",
-  "0x1b710b35131c471b",
-  "0x28db77f523047d84",
-  "0x32caab7b40c72493",
-  "0x3c9ebe0a15c9bebc",
-  "0x431d67c49c100d4c",
-  "0x4cc5d4becb3e42b6",
-  "0x597f299cfc657e2a",
-  "0x5fcb6fab3ad6faec",
-  "0x6c44198c4a475817"
-].map((n) => BigInt(n))))();
-const SHA512_Kh = /* @__PURE__ */ (() => K512[0])();
-const SHA512_Kl = /* @__PURE__ */ (() => K512[1])();
-const SHA512_W_H = /* @__PURE__ */ new Uint32Array(80);
-const SHA512_W_L = /* @__PURE__ */ new Uint32Array(80);
-class SHA512 extends HashMD {
-  constructor(outputLen = 64) {
-    super(128, outputLen, 16, false);
-    this.Ah = SHA512_IV[0] | 0;
-    this.Al = SHA512_IV[1] | 0;
-    this.Bh = SHA512_IV[2] | 0;
-    this.Bl = SHA512_IV[3] | 0;
-    this.Ch = SHA512_IV[4] | 0;
-    this.Cl = SHA512_IV[5] | 0;
-    this.Dh = SHA512_IV[6] | 0;
-    this.Dl = SHA512_IV[7] | 0;
-    this.Eh = SHA512_IV[8] | 0;
-    this.El = SHA512_IV[9] | 0;
-    this.Fh = SHA512_IV[10] | 0;
-    this.Fl = SHA512_IV[11] | 0;
-    this.Gh = SHA512_IV[12] | 0;
-    this.Gl = SHA512_IV[13] | 0;
-    this.Hh = SHA512_IV[14] | 0;
-    this.Hl = SHA512_IV[15] | 0;
-  }
-  // prettier-ignore
-  get() {
-    const { Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl } = this;
-    return [Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl];
-  }
-  // prettier-ignore
-  set(Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl) {
-    this.Ah = Ah | 0;
-    this.Al = Al | 0;
-    this.Bh = Bh | 0;
-    this.Bl = Bl | 0;
-    this.Ch = Ch | 0;
-    this.Cl = Cl | 0;
-    this.Dh = Dh | 0;
-    this.Dl = Dl | 0;
-    this.Eh = Eh | 0;
-    this.El = El | 0;
-    this.Fh = Fh | 0;
-    this.Fl = Fl | 0;
-    this.Gh = Gh | 0;
-    this.Gl = Gl | 0;
-    this.Hh = Hh | 0;
-    this.Hl = Hl | 0;
-  }
-  process(view, offset) {
-    for (let i = 0; i < 16; i++, offset += 4) {
-      SHA512_W_H[i] = view.getUint32(offset);
-      SHA512_W_L[i] = view.getUint32(offset += 4);
-    }
-    for (let i = 16; i < 80; i++) {
-      const W15h = SHA512_W_H[i - 15] | 0;
-      const W15l = SHA512_W_L[i - 15] | 0;
-      const s0h = rotrSH(W15h, W15l, 1) ^ rotrSH(W15h, W15l, 8) ^ shrSH(W15h, W15l, 7);
-      const s0l = rotrSL(W15h, W15l, 1) ^ rotrSL(W15h, W15l, 8) ^ shrSL(W15h, W15l, 7);
-      const W2h = SHA512_W_H[i - 2] | 0;
-      const W2l = SHA512_W_L[i - 2] | 0;
-      const s1h = rotrSH(W2h, W2l, 19) ^ rotrBH(W2h, W2l, 61) ^ shrSH(W2h, W2l, 6);
-      const s1l = rotrSL(W2h, W2l, 19) ^ rotrBL(W2h, W2l, 61) ^ shrSL(W2h, W2l, 6);
-      const SUMl = add4L(s0l, s1l, SHA512_W_L[i - 7], SHA512_W_L[i - 16]);
-      const SUMh = add4H(SUMl, s0h, s1h, SHA512_W_H[i - 7], SHA512_W_H[i - 16]);
-      SHA512_W_H[i] = SUMh | 0;
-      SHA512_W_L[i] = SUMl | 0;
-    }
-    let { Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl } = this;
-    for (let i = 0; i < 80; i++) {
-      const sigma1h = rotrSH(Eh, El, 14) ^ rotrSH(Eh, El, 18) ^ rotrBH(Eh, El, 41);
-      const sigma1l = rotrSL(Eh, El, 14) ^ rotrSL(Eh, El, 18) ^ rotrBL(Eh, El, 41);
-      const CHIh = Eh & Fh ^ ~Eh & Gh;
-      const CHIl = El & Fl ^ ~El & Gl;
-      const T1ll = add5L(Hl, sigma1l, CHIl, SHA512_Kl[i], SHA512_W_L[i]);
-      const T1h = add5H(T1ll, Hh, sigma1h, CHIh, SHA512_Kh[i], SHA512_W_H[i]);
-      const T1l = T1ll | 0;
-      const sigma0h = rotrSH(Ah, Al, 28) ^ rotrBH(Ah, Al, 34) ^ rotrBH(Ah, Al, 39);
-      const sigma0l = rotrSL(Ah, Al, 28) ^ rotrBL(Ah, Al, 34) ^ rotrBL(Ah, Al, 39);
-      const MAJh = Ah & Bh ^ Ah & Ch ^ Bh & Ch;
-      const MAJl = Al & Bl ^ Al & Cl ^ Bl & Cl;
-      Hh = Gh | 0;
-      Hl = Gl | 0;
-      Gh = Fh | 0;
-      Gl = Fl | 0;
-      Fh = Eh | 0;
-      Fl = El | 0;
-      ({ h: Eh, l: El } = add(Dh | 0, Dl | 0, T1h | 0, T1l | 0));
-      Dh = Ch | 0;
-      Dl = Cl | 0;
-      Ch = Bh | 0;
-      Cl = Bl | 0;
-      Bh = Ah | 0;
-      Bl = Al | 0;
-      const All = add3L(T1l, sigma0l, MAJl);
-      Ah = add3H(All, T1h, sigma0h, MAJh);
-      Al = All | 0;
-    }
-    ({ h: Ah, l: Al } = add(this.Ah | 0, this.Al | 0, Ah | 0, Al | 0));
-    ({ h: Bh, l: Bl } = add(this.Bh | 0, this.Bl | 0, Bh | 0, Bl | 0));
-    ({ h: Ch, l: Cl } = add(this.Ch | 0, this.Cl | 0, Ch | 0, Cl | 0));
-    ({ h: Dh, l: Dl } = add(this.Dh | 0, this.Dl | 0, Dh | 0, Dl | 0));
-    ({ h: Eh, l: El } = add(this.Eh | 0, this.El | 0, Eh | 0, El | 0));
-    ({ h: Fh, l: Fl } = add(this.Fh | 0, this.Fl | 0, Fh | 0, Fl | 0));
-    ({ h: Gh, l: Gl } = add(this.Gh | 0, this.Gl | 0, Gh | 0, Gl | 0));
-    ({ h: Hh, l: Hl } = add(this.Hh | 0, this.Hl | 0, Hh | 0, Hl | 0));
-    this.set(Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl);
-  }
-  roundClean() {
-    clean(SHA512_W_H, SHA512_W_L);
-  }
-  destroy() {
-    clean(this.buffer);
-    this.set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-  }
-}
-const sha256 = /* @__PURE__ */ createHasher(() => new SHA256());
-const sha224 = /* @__PURE__ */ createHasher(() => new SHA224());
-const sha512 = /* @__PURE__ */ createHasher(() => new SHA512());
-const JSON_KEY_PRINCIPAL = "__principal__";
-const SELF_AUTHENTICATING_SUFFIX = 2;
-const ANONYMOUS_SUFFIX = 4;
-const MANAGEMENT_CANISTER_PRINCIPAL_TEXT_STR = "aaaaa-aa";
-class Principal {
-  static anonymous() {
-    return new this(new Uint8Array([ANONYMOUS_SUFFIX]));
-  }
-  /**
-   * Utility method, returning the principal representing the management canister, decoded from the hex string `'aaaaa-aa'`
-   * @returns {Principal} principal of the management canister
-   */
-  static managementCanister() {
-    return this.fromText(MANAGEMENT_CANISTER_PRINCIPAL_TEXT_STR);
-  }
-  static selfAuthenticating(publicKey) {
-    const sha = sha224(publicKey);
-    return new this(new Uint8Array([...sha, SELF_AUTHENTICATING_SUFFIX]));
-  }
-  static from(other) {
-    if (typeof other === "string") {
-      return Principal.fromText(other);
-    } else if (Object.getPrototypeOf(other) === Uint8Array.prototype) {
-      return new Principal(other);
-    } else if (Principal.isPrincipal(other)) {
-      return new Principal(other._arr);
-    }
-    throw new Error(`Impossible to convert ${JSON.stringify(other)} to Principal.`);
-  }
-  static fromHex(hex2) {
-    return new this(hexToBytes(hex2));
-  }
-  static fromText(text) {
-    let maybePrincipal = text;
-    if (text.includes(JSON_KEY_PRINCIPAL)) {
-      const obj = JSON.parse(text);
-      if (JSON_KEY_PRINCIPAL in obj) {
-        maybePrincipal = obj[JSON_KEY_PRINCIPAL];
-      }
-    }
-    const canisterIdNoDash = maybePrincipal.toLowerCase().replace(/-/g, "");
-    let arr = base32Decode(canisterIdNoDash);
-    arr = arr.slice(4, arr.length);
-    const principal = new this(arr);
-    if (principal.toText() !== maybePrincipal) {
-      throw new Error(`Principal "${principal.toText()}" does not have a valid checksum (original value "${maybePrincipal}" may not be a valid Principal ID).`);
-    }
-    return principal;
-  }
-  static fromUint8Array(arr) {
-    return new this(arr);
-  }
-  static isPrincipal(other) {
-    return other instanceof Principal || typeof other === "object" && other !== null && "_isPrincipal" in other && other["_isPrincipal"] === true && "_arr" in other && other["_arr"] instanceof Uint8Array;
-  }
-  constructor(_arr) {
-    this._arr = _arr;
-    this._isPrincipal = true;
-  }
-  isAnonymous() {
-    return this._arr.byteLength === 1 && this._arr[0] === ANONYMOUS_SUFFIX;
-  }
-  toUint8Array() {
-    return this._arr;
-  }
-  toHex() {
-    return bytesToHex(this._arr).toUpperCase();
-  }
-  toText() {
-    const checksumArrayBuf = new ArrayBuffer(4);
-    const view = new DataView(checksumArrayBuf);
-    view.setUint32(0, getCrc32(this._arr));
-    const checksum = new Uint8Array(checksumArrayBuf);
-    const array = new Uint8Array([...checksum, ...this._arr]);
-    const result = base32Encode(array);
-    const matches = result.match(/.{1,5}/g);
-    if (!matches) {
-      throw new Error();
-    }
-    return matches.join("-");
-  }
-  toString() {
-    return this.toText();
-  }
-  /**
-   * Serializes to JSON
-   * @returns {JsonnablePrincipal} a JSON object with a single key, {@link JSON_KEY_PRINCIPAL}, whose value is the principal as a string
-   */
-  toJSON() {
-    return { [JSON_KEY_PRINCIPAL]: this.toText() };
-  }
-  /**
-   * Utility method taking a Principal to compare against. Used for determining canister ranges in certificate verification
-   * @param {Principal} other - a {@link Principal} to compare
-   * @returns {'lt' | 'eq' | 'gt'} `'lt' | 'eq' | 'gt'` a string, representing less than, equal to, or greater than
-   */
-  compareTo(other) {
-    for (let i = 0; i < Math.min(this._arr.length, other._arr.length); i++) {
-      if (this._arr[i] < other._arr[i])
-        return "lt";
-      else if (this._arr[i] > other._arr[i])
-        return "gt";
-    }
-    if (this._arr.length < other._arr.length)
-      return "lt";
-    if (this._arr.length > other._arr.length)
-      return "gt";
-    return "eq";
-  }
-  /**
-   * Utility method checking whether a provided Principal is less than or equal to the current one using the {@link Principal.compareTo} method
-   * @param other a {@link Principal} to compare
-   * @returns {boolean} boolean
-   */
-  ltEq(other) {
-    const cmp = this.compareTo(other);
-    return cmp == "lt" || cmp == "eq";
-  }
-  /**
-   * Utility method checking whether a provided Principal is greater than or equal to the current one using the {@link Principal.compareTo} method
-   * @param other a {@link Principal} to compare
-   * @returns {boolean} boolean
-   */
-  gtEq(other) {
-    const cmp = this.compareTo(other);
-    return cmp == "gt" || cmp == "eq";
-  }
-}
-var ErrorKindEnum;
-(function(ErrorKindEnum2) {
-  ErrorKindEnum2["Trust"] = "Trust";
-  ErrorKindEnum2["Protocol"] = "Protocol";
-  ErrorKindEnum2["Reject"] = "Reject";
-  ErrorKindEnum2["Transport"] = "Transport";
-  ErrorKindEnum2["External"] = "External";
-  ErrorKindEnum2["Limit"] = "Limit";
-  ErrorKindEnum2["Input"] = "Input";
-  ErrorKindEnum2["Unknown"] = "Unknown";
-})(ErrorKindEnum || (ErrorKindEnum = {}));
-class ErrorCode {
-  constructor(isCertified = false) {
-    this.isCertified = isCertified;
-  }
-  toString() {
-    let errorMessage = this.toErrorMessage();
-    if (this.requestContext) {
-      errorMessage += `
-Request context:
-  Request ID (hex): ${this.requestContext.requestId ? bytesToHex(this.requestContext.requestId) : "undefined"}
-  Sender pubkey (hex): ${bytesToHex(this.requestContext.senderPubKey)}
-  Sender signature (hex): ${bytesToHex(this.requestContext.senderSignature)}
-  Ingress expiry: ${this.requestContext.ingressExpiry.toString()}`;
-    }
-    if (this.callContext) {
-      errorMessage += `
-Call context:
-  Canister ID: ${this.callContext.canisterId.toText()}
-  Method name: ${this.callContext.methodName}
-  HTTP details: ${JSON.stringify(this.callContext.httpDetails, null, 2)}`;
-    }
-    return errorMessage;
-  }
-}
-class AgentError extends Error {
-  get code() {
-    return this.cause.code;
-  }
-  set code(code) {
-    this.cause.code = code;
-  }
-  get kind() {
-    return this.cause.kind;
-  }
-  set kind(kind) {
-    this.cause.kind = kind;
-  }
-  /**
-   * Reads the `isCertified` property of the underlying error code.
-   * @returns `true` if the error is certified, `false` otherwise.
-   */
-  get isCertified() {
-    return this.code.isCertified;
-  }
-  constructor(code, kind) {
-    super(code.toString());
-    this.name = "AgentError";
-    this.cause = { code, kind };
-    Object.setPrototypeOf(this, AgentError.prototype);
-  }
-  hasCode(code) {
-    return this.code instanceof code;
-  }
-  toString() {
-    return `${this.name} (${this.kind}): ${this.message}`;
-  }
-}
-class ErrorKind extends AgentError {
-  static fromCode(code) {
-    return new this(code);
-  }
-}
-class InputError extends ErrorKind {
-  constructor(code) {
-    super(code, ErrorKindEnum.Input);
-    this.name = "InputError";
-    Object.setPrototypeOf(this, InputError.prototype);
-  }
-}
-class DerDecodeLengthMismatchErrorCode extends ErrorCode {
-  constructor(expectedLength, actualLength) {
-    super();
-    this.expectedLength = expectedLength;
-    this.actualLength = actualLength;
-    this.name = "DerDecodeLengthMismatchErrorCode";
-    Object.setPrototypeOf(this, DerDecodeLengthMismatchErrorCode.prototype);
-  }
-  toErrorMessage() {
-    return `DER payload mismatch: Expected length ${this.expectedLength}, actual length: ${this.actualLength}`;
-  }
-}
-class DerDecodeErrorCode extends ErrorCode {
-  constructor(error) {
-    super();
-    this.error = error;
-    this.name = "DerDecodeErrorCode";
-    Object.setPrototypeOf(this, DerDecodeErrorCode.prototype);
-  }
-  toErrorMessage() {
-    return `Failed to decode DER: ${this.error}`;
-  }
-}
-class DerEncodeErrorCode extends ErrorCode {
-  constructor(error) {
-    super();
-    this.error = error;
-    this.name = "DerEncodeErrorCode";
-    Object.setPrototypeOf(this, DerEncodeErrorCode.prototype);
-  }
-  toErrorMessage() {
-    return `Failed to encode DER: ${this.error}`;
-  }
-}
-class HashValueErrorCode extends ErrorCode {
-  constructor(value) {
-    super();
-    this.value = value;
-    this.name = "HashValueErrorCode";
-    Object.setPrototypeOf(this, HashValueErrorCode.prototype);
-  }
-  toErrorMessage() {
-    return `Attempt to hash a value of unsupported type: ${this.value}`;
-  }
-}
-function concat(...uint8Arrays) {
-  const result = new Uint8Array(uint8Arrays.reduce((acc, curr) => acc + curr.byteLength, 0));
-  let index2 = 0;
-  for (const b of uint8Arrays) {
-    result.set(b, index2);
-    index2 += b.byteLength;
-  }
-  return result;
-}
-class PipeArrayBuffer {
-  /**
-   * Save a checkpoint of the reading view (for backtracking)
-   */
-  save() {
-    return this._view;
-  }
-  /**
-   * Restore a checkpoint of the reading view (for backtracking)
-   * @param checkPoint a previously saved checkpoint
-   */
-  restore(checkPoint) {
-    if (!(checkPoint instanceof Uint8Array)) {
-      throw new Error("Checkpoint must be a Uint8Array");
-    }
-    this._view = checkPoint;
-  }
-  /**
-   * Creates a new instance of a pipe
-   * @param buffer an optional buffer to start with
-   * @param length an optional amount of bytes to use for the length.
-   */
-  constructor(buffer, length = (buffer == null ? void 0 : buffer.byteLength) || 0) {
-    if (buffer && !(buffer instanceof Uint8Array)) {
-      try {
-        buffer = uint8FromBufLike$1(buffer);
-      } catch {
-        throw new Error("Buffer must be a Uint8Array");
-      }
-    }
-    if (length < 0 || !Number.isInteger(length)) {
-      throw new Error("Length must be a non-negative integer");
-    }
-    if (buffer && length > buffer.byteLength) {
-      throw new Error("Length cannot exceed buffer length");
-    }
-    this._buffer = buffer || new Uint8Array(0);
-    this._view = new Uint8Array(this._buffer.buffer, 0, length);
-  }
-  get buffer() {
-    return this._view.slice();
-  }
-  get byteLength() {
-    return this._view.byteLength;
-  }
-  /**
-   * Read `num` number of bytes from the front of the pipe.
-   * @param num The number of bytes to read.
-   */
-  read(num) {
-    const result = this._view.subarray(0, num);
-    this._view = this._view.subarray(num);
-    return result.slice();
-  }
-  readUint8() {
-    if (this._view.byteLength === 0) {
-      return void 0;
-    }
-    const result = this._view[0];
-    this._view = this._view.subarray(1);
-    return result;
-  }
-  /**
-   * Write a buffer to the end of the pipe.
-   * @param buf The bytes to write.
-   */
-  write(buf) {
-    if (!(buf instanceof Uint8Array)) {
-      throw new Error("Buffer must be a Uint8Array");
-    }
-    const offset = this._view.byteLength;
-    if (this._view.byteOffset + this._view.byteLength + buf.byteLength >= this._buffer.byteLength) {
-      this.alloc(buf.byteLength);
-    } else {
-      this._view = new Uint8Array(this._buffer.buffer, this._view.byteOffset, this._view.byteLength + buf.byteLength);
-    }
-    this._view.set(buf, offset);
-  }
-  /**
-   * Whether or not there is more data to read from the buffer
-   */
-  get end() {
-    return this._view.byteLength === 0;
-  }
-  /**
-   * Allocate a fixed amount of memory in the buffer. This does not affect the view.
-   * @param amount A number of bytes to add to the buffer.
-   */
-  alloc(amount) {
-    if (amount <= 0 || !Number.isInteger(amount)) {
-      throw new Error("Amount must be a positive integer");
-    }
-    const b = new Uint8Array((this._buffer.byteLength + amount) * 1.2 | 0);
-    const v2 = new Uint8Array(b.buffer, 0, this._view.byteLength + amount);
-    v2.set(this._view);
-    this._buffer = b;
-    this._view = v2;
-  }
-}
-function uint8FromBufLike$1(bufLike) {
-  if (!bufLike) {
-    throw new Error("Input cannot be null or undefined");
-  }
-  if (bufLike instanceof Uint8Array) {
-    return bufLike;
-  }
-  if (bufLike instanceof ArrayBuffer) {
-    return new Uint8Array(bufLike);
-  }
-  if (Array.isArray(bufLike)) {
-    return new Uint8Array(bufLike);
-  }
-  if ("buffer" in bufLike) {
-    return uint8FromBufLike$1(bufLike.buffer);
-  }
-  return new Uint8Array(bufLike);
-}
-function compare(u1, u2) {
-  if (u1.byteLength !== u2.byteLength) {
-    return u1.byteLength - u2.byteLength;
-  }
-  for (let i = 0; i < u1.length; i++) {
-    if (u1[i] !== u2[i]) {
-      return u1[i] - u2[i];
-    }
-  }
-  return 0;
-}
-function uint8Equals$1(u1, u2) {
-  return compare(u1, u2) === 0;
-}
-function uint8ToDataView(uint8) {
-  if (!(uint8 instanceof Uint8Array)) {
-    throw new Error("Input must be a Uint8Array");
-  }
-  return new DataView(uint8.buffer, uint8.byteOffset, uint8.byteLength);
-}
-function idlHash(s) {
-  const utf8encoder = new TextEncoder();
-  const array = utf8encoder.encode(s);
-  let h = 0;
-  for (const c of array) {
-    h = (h * 223 + c) % 2 ** 32;
-  }
-  return h;
-}
-function idlLabelToId(label) {
-  if (/^_\d+_$/.test(label) || /^_0x[0-9a-fA-F]+_$/.test(label)) {
-    const num = +label.slice(1, -1);
-    if (Number.isSafeInteger(num) && num >= 0 && num < 2 ** 32) {
-      return num;
-    }
-  }
-  return idlHash(label);
-}
-function ilog2(n) {
-  const nBig = BigInt(n);
-  if (n <= 0) {
-    throw new RangeError("Input must be positive");
-  }
-  return nBig.toString(2).length - 1;
-}
-function iexp2(n) {
-  const nBig = BigInt(n);
-  if (n < 0) {
-    throw new RangeError("Input must be non-negative");
-  }
-  return BigInt(1) << nBig;
-}
-function eob() {
-  throw new Error("unexpected end of buffer");
-}
-function safeRead(pipe2, num) {
-  if (pipe2.byteLength < num) {
-    eob();
-  }
-  return pipe2.read(num);
-}
-function safeReadUint8(pipe2) {
-  const byte = pipe2.readUint8();
-  if (byte === void 0) {
-    eob();
-  }
-  return byte;
-}
-function lebEncode(value) {
-  if (typeof value === "number") {
-    value = BigInt(value);
-  }
-  if (value < BigInt(0)) {
-    throw new Error("Cannot leb encode negative values.");
-  }
-  const byteLength = (value === BigInt(0) ? 0 : ilog2(value)) + 1;
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
-  while (true) {
-    const i = Number(value & BigInt(127));
-    value /= BigInt(128);
-    if (value === BigInt(0)) {
-      pipe2.write(new Uint8Array([i]));
-      break;
-    } else {
-      pipe2.write(new Uint8Array([i | 128]));
-    }
-  }
-  return pipe2.buffer;
-}
-function lebDecode(pipe2) {
-  let weight = BigInt(1);
-  let value = BigInt(0);
-  let byte;
-  do {
-    byte = safeReadUint8(pipe2);
-    value += BigInt(byte & 127).valueOf() * weight;
-    weight *= BigInt(128);
-  } while (byte >= 128);
-  return value;
-}
-function slebEncode(value) {
-  if (typeof value === "number") {
-    value = BigInt(value);
-  }
-  const isNeg = value < BigInt(0);
-  if (isNeg) {
-    value = -value - BigInt(1);
-  }
-  const byteLength = (value === BigInt(0) ? 0 : ilog2(value)) + 1;
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
-  while (true) {
-    const i = getLowerBytes(value);
-    value /= BigInt(128);
-    if (isNeg && value === BigInt(0) && (i & 64) !== 0 || !isNeg && value === BigInt(0) && (i & 64) === 0) {
-      pipe2.write(new Uint8Array([i]));
-      break;
-    } else {
-      pipe2.write(new Uint8Array([i | 128]));
-    }
-  }
-  function getLowerBytes(num) {
-    const bytes = num % BigInt(128);
-    if (isNeg) {
-      return Number(BigInt(128) - bytes - BigInt(1));
-    } else {
-      return Number(bytes);
-    }
-  }
-  return pipe2.buffer;
-}
-function slebDecode(pipe2) {
-  const pipeView = new Uint8Array(pipe2.buffer);
-  let len = 0;
-  for (; len < pipeView.byteLength; len++) {
-    if (pipeView[len] < 128) {
-      if ((pipeView[len] & 64) === 0) {
-        return lebDecode(pipe2);
-      }
-      break;
-    }
-  }
-  const bytes = new Uint8Array(safeRead(pipe2, len + 1));
-  let value = BigInt(0);
-  for (let i = bytes.byteLength - 1; i >= 0; i--) {
-    value = value * BigInt(128) + BigInt(128 - (bytes[i] & 127) - 1);
-  }
-  return -value - BigInt(1);
-}
-function writeUIntLE(value, byteLength) {
-  if (BigInt(value) < BigInt(0)) {
-    throw new Error("Cannot write negative values.");
-  }
-  return writeIntLE(value, byteLength);
-}
-function writeIntLE(value, byteLength) {
-  value = BigInt(value);
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(Math.min(1, byteLength)), 0);
-  let i = 0;
-  let mul = BigInt(256);
-  let sub = BigInt(0);
-  let byte = Number(value % mul);
-  pipe2.write(new Uint8Array([byte]));
-  while (++i < byteLength) {
-    if (value < 0 && sub === BigInt(0) && byte !== 0) {
-      sub = BigInt(1);
-    }
-    byte = Number((value / mul - sub) % BigInt(256));
-    pipe2.write(new Uint8Array([byte]));
-    mul *= BigInt(256);
-  }
-  return pipe2.buffer;
-}
-function readUIntLE(pipe2, byteLength) {
-  if (byteLength <= 0 || !Number.isInteger(byteLength)) {
-    throw new Error("Byte length must be a positive integer");
-  }
-  let val = BigInt(safeReadUint8(pipe2));
-  let mul = BigInt(1);
-  let i = 0;
-  while (++i < byteLength) {
-    mul *= BigInt(256);
-    const byte = BigInt(safeReadUint8(pipe2));
-    val = val + mul * byte;
-  }
-  return val;
-}
-function readIntLE(pipe2, byteLength) {
-  if (byteLength <= 0 || !Number.isInteger(byteLength)) {
-    throw new Error("Byte length must be a positive integer");
-  }
-  let val = readUIntLE(pipe2, byteLength);
-  const mul = BigInt(2) ** (BigInt(8) * BigInt(byteLength - 1) + BigInt(7));
-  if (val >= mul) {
-    val -= mul * BigInt(2);
-  }
-  return val;
-}
-var IDLTypeIds;
-(function(IDLTypeIds2) {
-  IDLTypeIds2[IDLTypeIds2["Null"] = -1] = "Null";
-  IDLTypeIds2[IDLTypeIds2["Bool"] = -2] = "Bool";
-  IDLTypeIds2[IDLTypeIds2["Nat"] = -3] = "Nat";
-  IDLTypeIds2[IDLTypeIds2["Int"] = -4] = "Int";
-  IDLTypeIds2[IDLTypeIds2["Float32"] = -13] = "Float32";
-  IDLTypeIds2[IDLTypeIds2["Float64"] = -14] = "Float64";
-  IDLTypeIds2[IDLTypeIds2["Text"] = -15] = "Text";
-  IDLTypeIds2[IDLTypeIds2["Reserved"] = -16] = "Reserved";
-  IDLTypeIds2[IDLTypeIds2["Empty"] = -17] = "Empty";
-  IDLTypeIds2[IDLTypeIds2["Opt"] = -18] = "Opt";
-  IDLTypeIds2[IDLTypeIds2["Vector"] = -19] = "Vector";
-  IDLTypeIds2[IDLTypeIds2["Record"] = -20] = "Record";
-  IDLTypeIds2[IDLTypeIds2["Variant"] = -21] = "Variant";
-  IDLTypeIds2[IDLTypeIds2["Func"] = -22] = "Func";
-  IDLTypeIds2[IDLTypeIds2["Service"] = -23] = "Service";
-  IDLTypeIds2[IDLTypeIds2["Principal"] = -24] = "Principal";
-})(IDLTypeIds || (IDLTypeIds = {}));
-const toReadableString_max = 400;
-function zipWith(xs, ys, f) {
-  return xs.map((x2, i) => f(x2, ys[i]));
-}
-var IdlTypeName;
-(function(IdlTypeName2) {
-  IdlTypeName2["EmptyClass"] = "__IDL_EmptyClass__";
-  IdlTypeName2["UnknownClass"] = "__IDL_UnknownClass__";
-  IdlTypeName2["BoolClass"] = "__IDL_BoolClass__";
-  IdlTypeName2["NullClass"] = "__IDL_NullClass__";
-  IdlTypeName2["ReservedClass"] = "__IDL_ReservedClass__";
-  IdlTypeName2["TextClass"] = "__IDL_TextClass__";
-  IdlTypeName2["IntClass"] = "__IDL_IntClass__";
-  IdlTypeName2["NatClass"] = "__IDL_NatClass__";
-  IdlTypeName2["FloatClass"] = "__IDL_FloatClass__";
-  IdlTypeName2["FixedIntClass"] = "__IDL_FixedIntClass__";
-  IdlTypeName2["FixedNatClass"] = "__IDL_FixedNatClass__";
-  IdlTypeName2["VecClass"] = "__IDL_VecClass__";
-  IdlTypeName2["OptClass"] = "__IDL_OptClass__";
-  IdlTypeName2["RecordClass"] = "__IDL_RecordClass__";
-  IdlTypeName2["TupleClass"] = "__IDL_TupleClass__";
-  IdlTypeName2["VariantClass"] = "__IDL_VariantClass__";
-  IdlTypeName2["RecClass"] = "__IDL_RecClass__";
-  IdlTypeName2["PrincipalClass"] = "__IDL_PrincipalClass__";
-  IdlTypeName2["FuncClass"] = "__IDL_FuncClass__";
-  IdlTypeName2["ServiceClass"] = "__IDL_ServiceClass__";
-})(IdlTypeName || (IdlTypeName = {}));
-class Type {
-  /* Display type name */
-  display() {
-    return this.name;
-  }
-  valueToString(x2) {
-    return toReadableString(x2);
-  }
-  /* Implement `T` in the IDL spec, only needed for non-primitive types */
-  buildTypeTable(typeTable) {
-    if (!typeTable.has(this)) {
-      this._buildTypeTableImpl(typeTable);
-    }
-  }
-}
-class PrimitiveType extends Type {
-  checkType(t) {
-    if (this.name !== t.name) {
-      throw new Error(`type mismatch: type on the wire ${t.name}, expect type ${this.name}`);
-    }
-    return t;
-  }
-  _buildTypeTableImpl(_typeTable) {
-    return;
-  }
-}
-class ConstructType extends Type {
-  checkType(t) {
-    if (t instanceof RecClass) {
-      const ty = t.getType();
-      if (typeof ty === "undefined") {
-        throw new Error("type mismatch with uninitialized type");
-      }
-      return ty;
-    }
-    throw new Error(`type mismatch: type on the wire ${t.name}, expect type ${this.name}`);
-  }
-  encodeType(typeTable) {
-    return typeTable.indexOf(this.name);
-  }
-}
-class EmptyClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.EmptyClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.EmptyClass;
-  }
-  accept(v2, d) {
-    return v2.visitEmpty(this, d);
-  }
-  covariant(x2) {
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue() {
-    throw new Error("Empty cannot appear as a function argument");
-  }
-  valueToString() {
-    throw new Error("Empty cannot appear as a value");
-  }
-  encodeType() {
-    return slebEncode(IDLTypeIds.Empty);
-  }
-  decodeValue() {
-    throw new Error("Empty cannot appear as an output");
-  }
-  get name() {
-    return "empty";
-  }
-}
-class NullClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.NullClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.NullClass;
-  }
-  accept(v2, d) {
-    return v2.visitNull(this, d);
-  }
-  covariant(x2) {
-    if (x2 === null)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue() {
-    return new Uint8Array(0);
-  }
-  encodeType() {
-    return slebEncode(IDLTypeIds.Null);
-  }
-  decodeValue(_b2, t) {
-    this.checkType(t);
-    return null;
-  }
-  get name() {
-    return "null";
-  }
-}
-class ReservedClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.ReservedClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.ReservedClass;
-  }
-  accept(v2, d) {
-    return v2.visitReserved(this, d);
-  }
-  covariant(_x) {
-    return true;
-  }
-  encodeValue() {
-    return new Uint8Array(0);
-  }
-  encodeType() {
-    return slebEncode(IDLTypeIds.Reserved);
-  }
-  decodeValue(b, t) {
-    if (t.name !== this.name) {
-      t.decodeValue(b, t);
-    }
-    return null;
-  }
-  get name() {
-    return "reserved";
-  }
-}
-class IntClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.IntClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.IntClass;
-  }
-  accept(v2, d) {
-    return v2.visitInt(this, d);
-  }
-  covariant(x2) {
-    if (typeof x2 === "bigint" || Number.isInteger(x2))
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    return slebEncode(x2);
-  }
-  encodeType() {
-    return slebEncode(IDLTypeIds.Int);
-  }
-  decodeValue(b, t) {
-    this.checkType(t);
-    return slebDecode(b);
-  }
-  get name() {
-    return "int";
-  }
-  valueToString(x2) {
-    return x2.toString();
-  }
-}
-class NatClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.NatClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.NatClass;
-  }
-  accept(v2, d) {
-    return v2.visitNat(this, d);
-  }
-  covariant(x2) {
-    if (typeof x2 === "bigint" && x2 >= BigInt(0) || Number.isInteger(x2) && x2 >= 0)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    return lebEncode(x2);
-  }
-  encodeType() {
-    return slebEncode(IDLTypeIds.Nat);
-  }
-  decodeValue(b, t) {
-    this.checkType(t);
-    return lebDecode(b);
-  }
-  get name() {
-    return "nat";
-  }
-  valueToString(x2) {
-    return x2.toString();
-  }
-}
-class FloatClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.FloatClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.FloatClass;
-  }
-  constructor(_bits) {
-    super();
-    this._bits = _bits;
-    if (_bits !== 32 && _bits !== 64) {
-      throw new Error("not a valid float type");
-    }
-  }
-  accept(v2, d) {
-    return v2.visitFloat(this, d);
-  }
-  covariant(x2) {
-    if (typeof x2 === "number" || x2 instanceof Number)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    const buf = new ArrayBuffer(this._bits / 8);
-    const view = new DataView(buf);
-    if (this._bits === 32) {
-      view.setFloat32(0, x2, true);
-    } else {
-      view.setFloat64(0, x2, true);
-    }
-    return new Uint8Array(buf);
-  }
-  encodeType() {
-    const opcode = this._bits === 32 ? IDLTypeIds.Float32 : IDLTypeIds.Float64;
-    return slebEncode(opcode);
-  }
-  decodeValue(b, t) {
-    this.checkType(t);
-    const bytes = safeRead(b, this._bits / 8);
-    const view = uint8ToDataView(bytes);
-    if (this._bits === 32) {
-      return view.getFloat32(0, true);
-    } else {
-      return view.getFloat64(0, true);
-    }
-  }
-  get name() {
-    return "float" + this._bits;
-  }
-  valueToString(x2) {
-    return x2.toString();
-  }
-}
-class FixedIntClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.FixedIntClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.FixedIntClass;
-  }
-  constructor(_bits) {
-    super();
-    this._bits = _bits;
-  }
-  accept(v2, d) {
-    return v2.visitFixedInt(this, d);
-  }
-  covariant(x2) {
-    const min = iexp2(this._bits - 1) * BigInt(-1);
-    const max = iexp2(this._bits - 1) - BigInt(1);
-    let ok = false;
-    if (typeof x2 === "bigint") {
-      ok = x2 >= min && x2 <= max;
-    } else if (Number.isInteger(x2)) {
-      const v2 = BigInt(x2);
-      ok = v2 >= min && v2 <= max;
-    } else {
-      ok = false;
-    }
-    if (ok)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    return writeIntLE(x2, this._bits / 8);
-  }
-  encodeType() {
-    const offset = Math.log2(this._bits) - 3;
-    return slebEncode(-9 - offset);
-  }
-  decodeValue(b, t) {
-    this.checkType(t);
-    const num = readIntLE(b, this._bits / 8);
-    if (this._bits <= 32) {
-      return Number(num);
-    } else {
-      return num;
-    }
-  }
-  get name() {
-    return `int${this._bits}`;
-  }
-  valueToString(x2) {
-    return x2.toString();
-  }
-}
-class FixedNatClass extends PrimitiveType {
-  get typeName() {
-    return IdlTypeName.FixedNatClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.FixedNatClass;
-  }
-  constructor(_bits) {
-    super();
-    this._bits = _bits;
-  }
-  accept(v2, d) {
-    return v2.visitFixedNat(this, d);
-  }
-  covariant(x2) {
-    const max = iexp2(this._bits);
-    let ok = false;
-    if (typeof x2 === "bigint" && x2 >= BigInt(0)) {
-      ok = x2 < max;
-    } else if (Number.isInteger(x2) && x2 >= 0) {
-      const v2 = BigInt(x2);
-      ok = v2 < max;
-    } else {
-      ok = false;
-    }
-    if (ok)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    return writeUIntLE(x2, this._bits / 8);
-  }
-  encodeType() {
-    const offset = Math.log2(this._bits) - 3;
-    return slebEncode(-5 - offset);
-  }
-  decodeValue(b, t) {
-    this.checkType(t);
-    const num = readUIntLE(b, this._bits / 8);
-    if (this._bits <= 32) {
-      return Number(num);
-    } else {
-      return num;
-    }
-  }
-  get name() {
-    return `nat${this._bits}`;
-  }
-  valueToString(x2) {
-    return x2.toString();
-  }
-}
-class VecClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.VecClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.VecClass;
-  }
-  constructor(_type) {
-    super();
-    this._type = _type;
-    this._blobOptimization = false;
-    if (_type instanceof FixedNatClass && _type._bits === 8) {
-      this._blobOptimization = true;
-    }
-  }
-  accept(v2, d) {
-    return v2.visitVec(this, this._type, d);
-  }
-  covariant(x2) {
-    const bits = this._type instanceof FixedNatClass ? this._type._bits : this._type instanceof FixedIntClass ? this._type._bits : 0;
-    if (ArrayBuffer.isView(x2) && bits == x2.BYTES_PER_ELEMENT * 8 || Array.isArray(x2) && x2.every((v2, idx) => {
-      try {
-        return this._type.covariant(v2);
-      } catch (e) {
-        throw new Error(`Invalid ${this.display()} argument: 
-
-index ${idx} -> ${e.message}`);
-      }
-    }))
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    const len = lebEncode(x2.length);
-    if (this._blobOptimization) {
-      return concat(len, new Uint8Array(x2));
-    }
-    if (ArrayBuffer.isView(x2)) {
-      if (x2 instanceof Int16Array || x2 instanceof Uint16Array) {
-        const buffer = new DataView(new ArrayBuffer(x2.length * 2));
-        for (let i = 0; i < x2.length; i++) {
-          if (x2 instanceof Int16Array) {
-            buffer.setInt16(i * 2, x2[i], true);
-          } else {
-            buffer.setUint16(i * 2, x2[i], true);
-          }
-        }
-        return concat(len, new Uint8Array(buffer.buffer));
-      } else if (x2 instanceof Int32Array || x2 instanceof Uint32Array) {
-        const buffer = new DataView(new ArrayBuffer(x2.length * 4));
-        for (let i = 0; i < x2.length; i++) {
-          if (x2 instanceof Int32Array) {
-            buffer.setInt32(i * 4, x2[i], true);
-          } else {
-            buffer.setUint32(i * 4, x2[i], true);
-          }
-        }
-        return concat(len, new Uint8Array(buffer.buffer));
-      } else if (x2 instanceof BigInt64Array || x2 instanceof BigUint64Array) {
-        const buffer = new DataView(new ArrayBuffer(x2.length * 8));
-        for (let i = 0; i < x2.length; i++) {
-          if (x2 instanceof BigInt64Array) {
-            buffer.setBigInt64(i * 8, x2[i], true);
-          } else {
-            buffer.setBigUint64(i * 8, x2[i], true);
-          }
-        }
-        return concat(len, new Uint8Array(buffer.buffer));
-      } else {
-        return concat(len, new Uint8Array(x2.buffer, x2.byteOffset, x2.byteLength));
-      }
-    }
-    const buf = new PipeArrayBuffer(new Uint8Array(len.byteLength + x2.length), 0);
-    buf.write(len);
-    for (const d of x2) {
-      const encoded = this._type.encodeValue(d);
-      buf.write(new Uint8Array(encoded));
-    }
-    return buf.buffer;
-  }
-  _buildTypeTableImpl(typeTable) {
-    this._type.buildTypeTable(typeTable);
-    const opCode = slebEncode(IDLTypeIds.Vector);
-    const buffer = this._type.encodeType(typeTable);
-    typeTable.add(this, concat(opCode, buffer));
-  }
-  decodeValue(b, t) {
-    const vec = this.checkType(t);
-    if (!(vec instanceof VecClass)) {
-      throw new Error("Not a vector type");
-    }
-    const len = Number(lebDecode(b));
-    if (this._type instanceof FixedNatClass) {
-      if (this._type._bits == 8) {
-        return new Uint8Array(b.read(len));
-      }
-      if (this._type._bits == 16) {
-        const bytes = b.read(len * 2);
-        const u16 = new Uint16Array(bytes.buffer, bytes.byteOffset, len);
-        return u16;
-      }
-      if (this._type._bits == 32) {
-        const bytes = b.read(len * 4);
-        const u32 = new Uint32Array(bytes.buffer, bytes.byteOffset, len);
-        return u32;
-      }
-      if (this._type._bits == 64) {
-        return new BigUint64Array(b.read(len * 8).buffer);
-      }
-    }
-    if (this._type instanceof FixedIntClass) {
-      if (this._type._bits == 8) {
-        return new Int8Array(b.read(len));
-      }
-      if (this._type._bits == 16) {
-        const bytes = b.read(len * 2);
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const result = new Int16Array(len);
-        for (let i = 0; i < len; i++) {
-          result[i] = view.getInt16(i * 2, true);
-        }
-        return result;
-      }
-      if (this._type._bits == 32) {
-        const bytes = b.read(len * 4);
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const result = new Int32Array(len);
-        for (let i = 0; i < len; i++) {
-          result[i] = view.getInt32(i * 4, true);
-        }
-        return result;
-      }
-      if (this._type._bits == 64) {
-        const bytes = b.read(len * 8);
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const result = new BigInt64Array(len);
-        for (let i = 0; i < len; i++) {
-          result[i] = view.getBigInt64(i * 8, true);
-        }
-        return result;
-      }
-    }
-    const rets = [];
-    for (let i = 0; i < len; i++) {
-      rets.push(this._type.decodeValue(b, vec._type));
-    }
-    return rets;
-  }
-  get name() {
-    return `vec ${this._type.name}`;
-  }
-  display() {
-    return `vec ${this._type.display()}`;
-  }
-  valueToString(x2) {
-    const elements = x2.map((e) => this._type.valueToString(e));
-    return "vec {" + elements.join("; ") + "}";
-  }
-}
-class OptClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.OptClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.OptClass;
-  }
-  constructor(_type) {
-    super();
-    this._type = _type;
-  }
-  accept(v2, d) {
-    return v2.visitOpt(this, this._type, d);
-  }
-  covariant(x2) {
-    try {
-      if (Array.isArray(x2) && (x2.length === 0 || x2.length === 1 && this._type.covariant(x2[0])))
-        return true;
-    } catch (e) {
-      throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)} 
-
--> ${e.message}`);
-    }
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    if (x2.length === 0) {
-      return new Uint8Array([0]);
-    } else {
-      return concat(new Uint8Array([1]), this._type.encodeValue(x2[0]));
-    }
-  }
-  _buildTypeTableImpl(typeTable) {
-    this._type.buildTypeTable(typeTable);
-    const opCode = slebEncode(IDLTypeIds.Opt);
-    const buffer = this._type.encodeType(typeTable);
-    typeTable.add(this, concat(opCode, buffer));
-  }
-  decodeValue(b, t) {
-    if (t instanceof NullClass) {
-      return [];
-    }
-    if (t instanceof ReservedClass) {
-      return [];
-    }
-    let wireType = t;
-    if (t instanceof RecClass) {
-      const ty = t.getType();
-      if (typeof ty === "undefined") {
-        throw new Error("type mismatch with uninitialized type");
-      } else
-        wireType = ty;
-    }
-    if (wireType instanceof OptClass) {
-      switch (safeReadUint8(b)) {
-        case 0:
-          return [];
-        case 1: {
-          const checkpoint = b.save();
-          try {
-            const v2 = this._type.decodeValue(b, wireType._type);
-            return [v2];
-          } catch (e) {
-            b.restore(checkpoint);
-            wireType._type.decodeValue(b, wireType._type);
-            return [];
-          }
-        }
-        default:
-          throw new Error("Not an option value");
-      }
-    } else if (
-      // this check corresponds to `not (null <: <t>)` in the spec
-      this._type instanceof NullClass || this._type instanceof OptClass || this._type instanceof ReservedClass
-    ) {
-      wireType.decodeValue(b, wireType);
-      return [];
-    } else {
-      const checkpoint = b.save();
-      try {
-        const v2 = this._type.decodeValue(b, t);
-        return [v2];
-      } catch (e) {
-        b.restore(checkpoint);
-        wireType.decodeValue(b, t);
-        return [];
-      }
-    }
-  }
-  get name() {
-    return `opt ${this._type.name}`;
-  }
-  display() {
-    return `opt ${this._type.display()}`;
-  }
-  valueToString(x2) {
-    if (x2.length === 0) {
-      return "null";
-    } else {
-      return `opt ${this._type.valueToString(x2[0])}`;
-    }
-  }
-}
-class RecordClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.RecordClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.RecordClass || instance.typeName === IdlTypeName.TupleClass;
-  }
-  constructor(fields = {}) {
-    super();
-    this._fields = Object.entries(fields).sort((a, b) => idlLabelToId(a[0]) - idlLabelToId(b[0]));
-  }
-  accept(v2, d) {
-    return v2.visitRecord(this, this._fields, d);
-  }
-  tryAsTuple() {
-    const res = [];
-    for (let i = 0; i < this._fields.length; i++) {
-      const [key, type] = this._fields[i];
-      if (key !== `_${i}_`) {
-        return null;
-      }
-      res.push(type);
-    }
-    return res;
-  }
-  covariant(x2) {
-    if (typeof x2 === "object" && this._fields.every(([k, t]) => {
-      if (!x2.hasOwnProperty(k)) {
-        throw new Error(`Record is missing key "${k}".`);
-      }
-      try {
-        return t.covariant(x2[k]);
-      } catch (e) {
-        throw new Error(`Invalid ${this.display()} argument: 
-
-field ${k} -> ${e.message}`);
-      }
-    }))
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    const values = this._fields.map(([key]) => x2[key]);
-    const bufs = zipWith(this._fields, values, ([, c], d) => c.encodeValue(d));
-    return concat(...bufs);
-  }
-  _buildTypeTableImpl(T) {
-    this._fields.forEach(([_, value]) => value.buildTypeTable(T));
-    const opCode = slebEncode(IDLTypeIds.Record);
-    const len = lebEncode(this._fields.length);
-    const fields = this._fields.map(([key, value]) => concat(lebEncode(idlLabelToId(key)), value.encodeType(T)));
-    T.add(this, concat(opCode, len, concat(...fields)));
-  }
-  decodeValue(b, t) {
-    const record = this.checkType(t);
-    if (!(record instanceof RecordClass)) {
-      throw new Error("Not a record type");
-    }
-    const x2 = {};
-    let expectedRecordIdx = 0;
-    let actualRecordIdx = 0;
-    while (actualRecordIdx < record._fields.length) {
-      const [hash, type] = record._fields[actualRecordIdx];
-      if (expectedRecordIdx >= this._fields.length) {
-        type.decodeValue(b, type);
-        actualRecordIdx++;
-        continue;
-      }
-      const [expectKey, expectType] = this._fields[expectedRecordIdx];
-      const expectedId = idlLabelToId(this._fields[expectedRecordIdx][0]);
-      const actualId = idlLabelToId(hash);
-      if (expectedId === actualId) {
-        x2[expectKey] = expectType.decodeValue(b, type);
-        expectedRecordIdx++;
-        actualRecordIdx++;
-      } else if (actualId > expectedId) {
-        if (expectType instanceof OptClass || expectType instanceof ReservedClass) {
-          x2[expectKey] = [];
-          expectedRecordIdx++;
-        } else {
-          throw new Error("Cannot find required field " + expectKey);
-        }
-      } else {
-        type.decodeValue(b, type);
-        actualRecordIdx++;
-      }
-    }
-    for (const [expectKey, expectType] of this._fields.slice(expectedRecordIdx)) {
-      if (expectType instanceof OptClass || expectType instanceof ReservedClass) {
-        x2[expectKey] = [];
-      } else {
-        throw new Error("Cannot find required field " + expectKey);
-      }
-    }
-    return x2;
-  }
-  get fieldsAsObject() {
-    const fields = {};
-    for (const [name, ty] of this._fields) {
-      fields[idlLabelToId(name)] = ty;
-    }
-    return fields;
-  }
-  get name() {
-    const fields = this._fields.map(([key, value]) => key + ":" + value.name);
-    return `record {${fields.join("; ")}}`;
-  }
-  display() {
-    const fields = this._fields.map(([key, value]) => key + ":" + value.display());
-    return `record {${fields.join("; ")}}`;
-  }
-  valueToString(x2) {
-    const values = this._fields.map(([key]) => x2[key]);
-    const fields = zipWith(this._fields, values, ([k, c], d) => k + "=" + c.valueToString(d));
-    return `record {${fields.join("; ")}}`;
-  }
-}
-class VariantClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.VariantClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.VariantClass;
-  }
-  constructor(fields = {}) {
-    super();
-    this._fields = Object.entries(fields).sort((a, b) => idlLabelToId(a[0]) - idlLabelToId(b[0]));
-  }
-  accept(v2, d) {
-    return v2.visitVariant(this, this._fields, d);
-  }
-  covariant(x2) {
-    if (typeof x2 === "object" && Object.entries(x2).length === 1 && this._fields.every(([k, v2]) => {
-      try {
-        return !x2.hasOwnProperty(k) || v2.covariant(x2[k]);
-      } catch (e) {
-        throw new Error(`Invalid ${this.display()} argument: 
-
-variant ${k} -> ${e.message}`);
-      }
-    }))
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    for (let i = 0; i < this._fields.length; i++) {
-      const [name, type] = this._fields[i];
-      if (x2.hasOwnProperty(name)) {
-        const idx = lebEncode(i);
-        const buf = type.encodeValue(x2[name]);
-        return concat(idx, buf);
-      }
-    }
-    throw Error("Variant has no data: " + x2);
-  }
-  _buildTypeTableImpl(typeTable) {
-    this._fields.forEach(([, type]) => {
-      type.buildTypeTable(typeTable);
-    });
-    const opCode = slebEncode(IDLTypeIds.Variant);
-    const len = lebEncode(this._fields.length);
-    const fields = this._fields.map(([key, value]) => concat(lebEncode(idlLabelToId(key)), value.encodeType(typeTable)));
-    typeTable.add(this, concat(opCode, len, ...fields));
-  }
-  decodeValue(b, t) {
-    const variant = this.checkType(t);
-    if (!(variant instanceof VariantClass)) {
-      throw new Error("Not a variant type");
-    }
-    const idx = Number(lebDecode(b));
-    if (idx >= variant._fields.length) {
-      throw Error("Invalid variant index: " + idx);
-    }
-    const [wireHash, wireType] = variant._fields[idx];
-    for (const [key, expectType] of this._fields) {
-      if (idlLabelToId(wireHash) === idlLabelToId(key)) {
-        const value = expectType.decodeValue(b, wireType);
-        return { [key]: value };
-      }
-    }
-    throw new Error("Cannot find field hash " + wireHash);
-  }
-  get name() {
-    const fields = this._fields.map(([key, type]) => key + ":" + type.name);
-    return `variant {${fields.join("; ")}}`;
-  }
-  display() {
-    const fields = this._fields.map(([key, type]) => key + (type.name === "null" ? "" : `:${type.display()}`));
-    return `variant {${fields.join("; ")}}`;
-  }
-  valueToString(x2) {
-    for (const [name, type] of this._fields) {
-      if (x2.hasOwnProperty(name)) {
-        const value = type.valueToString(x2[name]);
-        if (value === "null") {
-          return `variant {${name}}`;
-        } else {
-          return `variant {${name}=${value}}`;
-        }
-      }
-    }
-    throw new Error("Variant has no data: " + x2);
-  }
-  get alternativesAsObject() {
-    const alternatives = {};
-    for (const [name, ty] of this._fields) {
-      alternatives[idlLabelToId(name)] = ty;
-    }
-    return alternatives;
-  }
-}
-const _RecClass = class _RecClass extends ConstructType {
-  constructor() {
-    super(...arguments);
-    this._id = _RecClass._counter++;
-  }
-  get typeName() {
-    return IdlTypeName.RecClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.RecClass;
-  }
-  accept(v2, d) {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    return v2.visitRec(this, this._type, d);
-  }
-  fill(t) {
-    this._type = t;
-  }
-  getType() {
-    return this._type;
-  }
-  covariant(x2) {
-    if (this._type ? this._type.covariant(x2) : false)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    return this._type.encodeValue(x2);
-  }
-  _buildTypeTableImpl(typeTable) {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    typeTable.add(this, new Uint8Array([]));
-    this._type.buildTypeTable(typeTable);
-    typeTable.merge(this, this._type.name);
-  }
-  decodeValue(b, t) {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    return this._type.decodeValue(b, t);
-  }
-  get name() {
-    return `rec_${this._id}`;
-  }
-  display() {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    return `μ${this.name}.${this._type.name}`;
-  }
-  valueToString(x2) {
-    if (!this._type) {
-      throw Error("Recursive type uninitialized.");
-    }
-    return this._type.valueToString(x2);
-  }
-};
-_RecClass._counter = 0;
-let RecClass = _RecClass;
-function decodePrincipalId(b) {
-  const x2 = safeReadUint8(b);
-  if (x2 !== 1) {
-    throw new Error("Cannot decode principal");
-  }
-  const len = Number(lebDecode(b));
-  return Principal.fromUint8Array(new Uint8Array(safeRead(b, len)));
-}
-class FuncClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.FuncClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.FuncClass;
-  }
-  static argsToString(types, v2) {
-    if (types.length !== v2.length) {
-      throw new Error("arity mismatch");
-    }
-    return "(" + types.map((t, i) => t.valueToString(v2[i])).join(", ") + ")";
-  }
-  constructor(argTypes, retTypes, annotations = []) {
-    super();
-    this.argTypes = argTypes;
-    this.retTypes = retTypes;
-    this.annotations = annotations;
-  }
-  accept(v2, d) {
-    return v2.visitFunc(this, d);
-  }
-  covariant(x2) {
-    if (Array.isArray(x2) && x2.length === 2 && x2[0] && x2[0]._isPrincipal && typeof x2[1] === "string")
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue([principal, methodName]) {
-    const buf = principal.toUint8Array();
-    const len = lebEncode(buf.byteLength);
-    const canister = concat(new Uint8Array([1]), len, buf);
-    const method = new TextEncoder().encode(methodName);
-    const methodLen = lebEncode(method.byteLength);
-    return concat(new Uint8Array([1]), canister, methodLen, method);
-  }
-  _buildTypeTableImpl(T) {
-    this.argTypes.forEach((arg) => arg.buildTypeTable(T));
-    this.retTypes.forEach((arg) => arg.buildTypeTable(T));
-    const opCode = slebEncode(IDLTypeIds.Func);
-    const argLen = lebEncode(this.argTypes.length);
-    const args = concat(...this.argTypes.map((arg) => arg.encodeType(T)));
-    const retLen = lebEncode(this.retTypes.length);
-    const rets = concat(...this.retTypes.map((arg) => arg.encodeType(T)));
-    const annLen = lebEncode(this.annotations.length);
-    const anns = concat(...this.annotations.map((a) => this.encodeAnnotation(a)));
-    T.add(this, concat(opCode, argLen, args, retLen, rets, annLen, anns));
-  }
-  decodeValue(b, t) {
-    const tt2 = t instanceof RecClass ? t.getType() ?? t : t;
-    if (!subtype(tt2, this)) {
-      throw new Error(`Cannot decode function reference at type ${this.display()} from wire type ${tt2.display()}`);
-    }
-    const x2 = safeReadUint8(b);
-    if (x2 !== 1) {
-      throw new Error("Cannot decode function reference");
-    }
-    const canister = decodePrincipalId(b);
-    const mLen = Number(lebDecode(b));
-    const buf = safeRead(b, mLen);
-    const decoder = new TextDecoder("utf8", { fatal: true });
-    const method = decoder.decode(buf);
-    return [canister, method];
-  }
-  get name() {
-    const args = this.argTypes.map((arg) => arg.name).join(", ");
-    const rets = this.retTypes.map((arg) => arg.name).join(", ");
-    const annon = " " + this.annotations.join(" ");
-    return `(${args}) -> (${rets})${annon}`;
-  }
-  valueToString([principal, str]) {
-    return `func "${principal.toText()}".${str}`;
-  }
-  display() {
-    const args = this.argTypes.map((arg) => arg.display()).join(", ");
-    const rets = this.retTypes.map((arg) => arg.display()).join(", ");
-    const annon = " " + this.annotations.join(" ");
-    return `(${args}) → (${rets})${annon}`;
-  }
-  encodeAnnotation(ann) {
-    if (ann === "query") {
-      return new Uint8Array([1]);
-    } else if (ann === "oneway") {
-      return new Uint8Array([2]);
-    } else if (ann === "composite_query") {
-      return new Uint8Array([3]);
-    } else {
-      throw new Error("Illegal function annotation");
-    }
-  }
-}
-class ServiceClass extends ConstructType {
-  get typeName() {
-    return IdlTypeName.ServiceClass;
-  }
-  static [Symbol.hasInstance](instance) {
-    return instance.typeName === IdlTypeName.ServiceClass;
-  }
-  constructor(fields) {
-    super();
-    this._fields = Object.entries(fields).sort((a, b) => {
-      if (a[0] < b[0]) {
-        return -1;
-      }
-      if (a[0] > b[0]) {
-        return 1;
-      }
-      return 0;
-    });
-  }
-  accept(v2, d) {
-    return v2.visitService(this, d);
-  }
-  covariant(x2) {
-    if (x2 && x2._isPrincipal)
-      return true;
-    throw new Error(`Invalid ${this.display()} argument: ${toReadableString(x2)}`);
-  }
-  encodeValue(x2) {
-    const buf = x2.toUint8Array();
-    const len = lebEncode(buf.length);
-    return concat(new Uint8Array([1]), len, buf);
-  }
-  _buildTypeTableImpl(T) {
-    this._fields.forEach(([_, func]) => func.buildTypeTable(T));
-    const opCode = slebEncode(IDLTypeIds.Service);
-    const len = lebEncode(this._fields.length);
-    const meths = this._fields.map(([label, func]) => {
-      const labelBuf = new TextEncoder().encode(label);
-      const labelLen = lebEncode(labelBuf.length);
-      return concat(labelLen, labelBuf, func.encodeType(T));
-    });
-    T.add(this, concat(opCode, len, ...meths));
-  }
-  decodeValue(b, t) {
-    const tt2 = t instanceof RecClass ? t.getType() ?? t : t;
-    if (!subtype(tt2, this)) {
-      throw new Error(`Cannot decode service reference at type ${this.display()} from wire type ${tt2.display()}`);
-    }
-    return decodePrincipalId(b);
-  }
-  get name() {
-    const fields = this._fields.map(([key, value]) => key + ":" + value.name);
-    return `service {${fields.join("; ")}}`;
-  }
-  valueToString(x2) {
-    return `service "${x2.toText()}"`;
-  }
-  fieldsAsObject() {
-    const fields = {};
-    for (const [name, ty] of this._fields) {
-      fields[name] = ty;
-    }
-    return fields;
-  }
-}
-function toReadableString(x2) {
-  const str = JSON.stringify(x2, (_key, value) => typeof value === "bigint" ? `BigInt(${value})` : value);
-  return str && str.length > toReadableString_max ? str.substring(0, toReadableString_max - 3) + "..." : str;
-}
-new FloatClass(32);
-new FloatClass(64);
-new FixedIntClass(8);
-new FixedIntClass(16);
-new FixedIntClass(32);
-new FixedIntClass(64);
-new FixedNatClass(8);
-new FixedNatClass(16);
-new FixedNatClass(32);
-new FixedNatClass(64);
-function Service(t) {
-  return new ServiceClass(t);
-}
-class Relations {
-  constructor(relations = /* @__PURE__ */ new Map()) {
-    this.rels = relations;
-  }
-  copy() {
-    const copy = /* @__PURE__ */ new Map();
-    for (const [key, value] of this.rels.entries()) {
-      const valCopy = new Map(value);
-      copy.set(key, valCopy);
-    }
-    return new Relations(copy);
-  }
-  /// Returns whether we know for sure that a relation holds or doesn't (`true` or `false`), or
-  /// if we don't know yet (`undefined`)
-  known(t1, t2) {
-    var _a2;
-    return (_a2 = this.rels.get(t1.name)) == null ? void 0 : _a2.get(t2.name);
-  }
-  addNegative(t1, t2) {
-    this.addNames(t1.name, t2.name, false);
-  }
-  add(t1, t2) {
-    this.addNames(t1.name, t2.name, true);
-  }
-  display() {
-    let result = "";
-    for (const [t1, v2] of this.rels) {
-      for (const [t2, known] of v2) {
-        const subty = known ? ":<" : "!<:";
-        result += `${t1} ${subty} ${t2}
-`;
-      }
-    }
-    return result;
-  }
-  addNames(t1, t2, isSubtype) {
-    const t1Map = this.rels.get(t1);
-    if (t1Map == void 0) {
-      const newMap = /* @__PURE__ */ new Map();
-      newMap.set(t2, isSubtype);
-      this.rels.set(t1, newMap);
-    } else {
-      t1Map.set(t2, isSubtype);
-    }
-  }
-}
-let subtypeCache = new Relations();
-function eqFunctionAnnotations(t1, t2) {
-  const t1Annotations = new Set(t1.annotations);
-  const t2Annotations = new Set(t2.annotations);
-  if (t1Annotations.size !== t2Annotations.size) {
-    return false;
-  }
-  for (const a of t1Annotations) {
-    if (!t2Annotations.has(a))
-      return false;
-  }
-  return true;
-}
-function canBeOmmitted(t) {
-  return t instanceof OptClass || t instanceof NullClass || t instanceof ReservedClass;
-}
-function subtype(t1, t2) {
-  const relations = subtypeCache.copy();
-  const isSubtype = subtype_(relations, t1, t2);
-  if (isSubtype) {
-    subtypeCache.add(t1, t2);
-  } else {
-    subtypeCache.addNegative(t1, t2);
-  }
-  return isSubtype;
-}
-function subtype_(relations, t1, t2) {
-  if (t1.name === t2.name)
-    return true;
-  const known = relations.known(t1, t2);
-  if (known !== void 0)
-    return known;
-  relations.add(t1, t2);
-  if (t2 instanceof ReservedClass)
-    return true;
-  if (t1 instanceof EmptyClass)
-    return true;
-  if (t1 instanceof NatClass && t2 instanceof IntClass)
-    return true;
-  if (t1 instanceof VecClass && t2 instanceof VecClass)
-    return subtype_(relations, t1._type, t2._type);
-  if (t2 instanceof OptClass)
-    return true;
-  if (t1 instanceof RecordClass && t2 instanceof RecordClass) {
-    const t1Object = t1.fieldsAsObject;
-    for (const [label, ty2] of t2._fields) {
-      const ty1 = t1Object[idlLabelToId(label)];
-      if (!ty1) {
-        if (!canBeOmmitted(ty2))
-          return false;
-      } else {
-        if (!subtype_(relations, ty1, ty2))
-          return false;
-      }
-    }
-    return true;
-  }
-  if (t1 instanceof FuncClass && t2 instanceof FuncClass) {
-    if (!eqFunctionAnnotations(t1, t2))
-      return false;
-    for (let i = 0; i < t1.argTypes.length; i++) {
-      const argTy1 = t1.argTypes[i];
-      if (i < t2.argTypes.length) {
-        if (!subtype_(relations, t2.argTypes[i], argTy1))
-          return false;
-      } else {
-        if (!canBeOmmitted(argTy1))
-          return false;
-      }
-    }
-    for (let i = 0; i < t2.retTypes.length; i++) {
-      const retTy2 = t2.retTypes[i];
-      if (i < t1.retTypes.length) {
-        if (!subtype_(relations, t1.retTypes[i], retTy2))
-          return false;
-      } else {
-        if (!canBeOmmitted(retTy2))
-          return false;
-      }
-    }
-    return true;
-  }
-  if (t1 instanceof VariantClass && t2 instanceof VariantClass) {
-    const t2Object = t2.alternativesAsObject;
-    for (const [label, ty1] of t1._fields) {
-      const ty2 = t2Object[idlLabelToId(label)];
-      if (!ty2)
-        return false;
-      if (!subtype_(relations, ty1, ty2))
-        return false;
-    }
-    return true;
-  }
-  if (t1 instanceof ServiceClass && t2 instanceof ServiceClass) {
-    const t1Object = t1.fieldsAsObject();
-    for (const [name, ty2] of t2._fields) {
-      const ty1 = t1Object[name];
-      if (!ty1)
-        return false;
-      if (!subtype_(relations, ty1, ty2))
-        return false;
-    }
-    return true;
-  }
-  if (t1 instanceof RecClass) {
-    return subtype_(relations, t1.getType(), t2);
-  }
-  if (t2 instanceof RecClass) {
-    return subtype_(relations, t1, t2.getType());
-  }
-  return false;
-}
-function uint8FromBufLike(bufLike) {
-  if (!bufLike) {
-    throw new Error("Input cannot be null or undefined");
-  }
-  if (bufLike instanceof Uint8Array) {
-    return bufLike;
-  }
-  if (bufLike instanceof ArrayBuffer) {
-    return new Uint8Array(bufLike);
-  }
-  if (Array.isArray(bufLike)) {
-    return new Uint8Array(bufLike);
-  }
-  if ("buffer" in bufLike) {
-    return uint8FromBufLike(bufLike.buffer);
-  }
-  return new Uint8Array(bufLike);
-}
-function uint8Equals(a, b) {
-  if (a.length !== b.length)
-    return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i])
-      return false;
-  }
-  return true;
-}
-function hashValue(value) {
-  if (typeof value === "string") {
-    return hashString(value);
-  } else if (typeof value === "number") {
-    return sha256(lebEncode(value));
-  } else if (value instanceof Uint8Array || ArrayBuffer.isView(value)) {
-    return sha256(uint8FromBufLike(value));
-  } else if (Array.isArray(value)) {
-    const vals = value.map(hashValue);
-    return sha256(concatBytes(...vals));
-  } else if (value && typeof value === "object" && value._isPrincipal) {
-    return sha256(value.toUint8Array());
-  } else if (typeof value === "object" && value !== null && typeof value.toHash === "function") {
-    return hashValue(value.toHash());
-  } else if (typeof value === "object") {
-    return hashOfMap(value);
-  } else if (typeof value === "bigint") {
-    return sha256(lebEncode(value));
-  }
-  throw InputError.fromCode(new HashValueErrorCode(value));
-}
-const hashString = (value) => {
-  const encoded = new TextEncoder().encode(value);
-  return sha256(encoded);
-};
-function requestIdOf(request) {
-  return hashOfMap(request);
-}
-function hashOfMap(map) {
-  const hashed = Object.entries(map).filter(([, value]) => value !== void 0).map(([key, value]) => {
-    const hashedKey = hashString(key);
-    const hashedValue = hashValue(value);
-    return [hashedKey, hashedValue];
-  });
-  const traversed = hashed;
-  const sorted = traversed.sort(([k1], [k2]) => {
-    return compare(k1, k2);
-  });
-  const concatenated = concatBytes(...sorted.map((x2) => concatBytes(...x2)));
-  const result = sha256(concatenated);
-  return result;
-}
-const IC_REQUEST_DOMAIN_SEPARATOR = new TextEncoder().encode("\nic-request");
-new TextEncoder().encode("\vic-response");
-const IC_REQUEST_AUTH_DELEGATION_DOMAIN_SEPARATOR = new TextEncoder().encode("ic-request-auth-delegation");
-class SignIdentity {
-  /**
-   * Get the principal represented by this identity. Normally should be a
-   * `Principal.selfAuthenticating()`.
-   */
-  getPrincipal() {
-    if (!this._principal) {
-      this._principal = Principal.selfAuthenticating(new Uint8Array(this.getPublicKey().toDer()));
-    }
-    return this._principal;
-  }
-  /**
-   * Transform a request into a signed version of the request. This is done last
-   * after the transforms on the body of a request. The returned object can be
-   * anything, but must be serializable to CBOR.
-   * @param request - internet computer request to transform
-   */
-  async transformRequest(request) {
-    const { body, ...fields } = request;
-    const requestId = requestIdOf(body);
-    return {
-      ...fields,
-      body: {
-        content: body,
-        sender_pubkey: this.getPublicKey().toDer(),
-        sender_sig: await this.sign(concatBytes(IC_REQUEST_DOMAIN_SEPARATOR, requestId))
-      }
-    };
-  }
-}
-class AnonymousIdentity {
-  getPrincipal() {
-    return Principal.anonymous();
-  }
-  async transformRequest(request) {
-    return {
-      ...request,
-      body: { content: request.body }
-    };
-  }
-}
-/*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const _0n$3 = /* @__PURE__ */ BigInt(0);
-const _1n$4 = /* @__PURE__ */ BigInt(1);
-function _abool2(value, title = "") {
-  if (typeof value !== "boolean") {
-    const prefix2 = title && `"${title}"`;
-    throw new Error(prefix2 + "expected boolean, got type=" + typeof value);
-  }
-  return value;
-}
-function _abytes2(value, length, title = "") {
-  const bytes = isBytes(value);
-  const len = value == null ? void 0 : value.length;
-  const needsLen = length !== void 0;
-  if (!bytes || needsLen && len !== length) {
-    const prefix2 = title && `"${title}" `;
-    const ofLen = needsLen ? ` of length ${length}` : "";
-    const got = bytes ? `length=${len}` : `type=${typeof value}`;
-    throw new Error(prefix2 + "expected Uint8Array" + ofLen + ", got " + got);
-  }
-  return value;
-}
-function hexToNumber(hex2) {
-  if (typeof hex2 !== "string")
-    throw new Error("hex string expected, got " + typeof hex2);
-  return hex2 === "" ? _0n$3 : BigInt("0x" + hex2);
-}
-function bytesToNumberBE(bytes) {
-  return hexToNumber(bytesToHex(bytes));
-}
-function bytesToNumberLE(bytes) {
-  abytes(bytes);
-  return hexToNumber(bytesToHex(Uint8Array.from(bytes).reverse()));
-}
-function numberToBytesBE(n, len) {
-  return hexToBytes(n.toString(16).padStart(len * 2, "0"));
-}
-function numberToBytesLE(n, len) {
-  return numberToBytesBE(n, len).reverse();
-}
-function ensureBytes(title, hex2, expectedLength) {
-  let res;
-  if (typeof hex2 === "string") {
-    try {
-      res = hexToBytes(hex2);
-    } catch (e) {
-      throw new Error(title + " must be hex string or Uint8Array, cause: " + e);
-    }
-  } else if (isBytes(hex2)) {
-    res = Uint8Array.from(hex2);
-  } else {
-    throw new Error(title + " must be hex string or Uint8Array");
-  }
-  const len = res.length;
-  if (typeof expectedLength === "number" && len !== expectedLength)
-    throw new Error(title + " of length " + expectedLength + " expected, got " + len);
-  return res;
-}
-function copyBytes(bytes) {
-  return Uint8Array.from(bytes);
-}
-const isPosBig = (n) => typeof n === "bigint" && _0n$3 <= n;
-function inRange(n, min, max) {
-  return isPosBig(n) && isPosBig(min) && isPosBig(max) && min <= n && n < max;
-}
-function aInRange(title, n, min, max) {
-  if (!inRange(n, min, max))
-    throw new Error("expected valid " + title + ": " + min + " <= n < " + max + ", got " + n);
-}
-function bitLen(n) {
-  let len;
-  for (len = 0; n > _0n$3; n >>= _1n$4, len += 1)
-    ;
-  return len;
-}
-const bitMask = (n) => (_1n$4 << BigInt(n)) - _1n$4;
-function _validateObject(object, fields, optFields = {}) {
-  if (!object || typeof object !== "object")
-    throw new Error("expected valid options object");
-  function checkField(fieldName, expectedType, isOpt) {
-    const val = object[fieldName];
-    if (isOpt && val === void 0)
-      return;
-    const current = typeof val;
-    if (current !== expectedType || val === null)
-      throw new Error(`param "${fieldName}" is invalid: expected ${expectedType}, got ${current}`);
-  }
-  Object.entries(fields).forEach(([k, v2]) => checkField(k, v2, false));
-  Object.entries(optFields).forEach(([k, v2]) => checkField(k, v2, true));
-}
-function memoized(fn) {
-  const map = /* @__PURE__ */ new WeakMap();
-  return (arg, ...args) => {
-    const val = map.get(arg);
-    if (val !== void 0)
-      return val;
-    const computed = fn(arg, ...args);
-    map.set(arg, computed);
-    return computed;
-  };
-}
-/*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const _0n$2 = BigInt(0), _1n$3 = BigInt(1), _2n$2 = /* @__PURE__ */ BigInt(2), _3n = /* @__PURE__ */ BigInt(3);
-const _4n = /* @__PURE__ */ BigInt(4), _5n$1 = /* @__PURE__ */ BigInt(5), _7n = /* @__PURE__ */ BigInt(7);
-const _8n$2 = /* @__PURE__ */ BigInt(8), _9n = /* @__PURE__ */ BigInt(9), _16n = /* @__PURE__ */ BigInt(16);
-function mod(a, b) {
-  const result = a % b;
-  return result >= _0n$2 ? result : b + result;
-}
-function pow2(x2, power, modulo) {
-  let res = x2;
-  while (power-- > _0n$2) {
-    res *= res;
-    res %= modulo;
-  }
-  return res;
-}
-function invert(number2, modulo) {
-  if (number2 === _0n$2)
-    throw new Error("invert: expected non-zero number");
-  if (modulo <= _0n$2)
-    throw new Error("invert: expected positive modulus, got " + modulo);
-  let a = mod(number2, modulo);
-  let b = modulo;
-  let x2 = _0n$2, u = _1n$3;
-  while (a !== _0n$2) {
-    const q = b / a;
-    const r2 = b % a;
-    const m = x2 - u * q;
-    b = a, a = r2, x2 = u, u = m;
-  }
-  const gcd = b;
-  if (gcd !== _1n$3)
-    throw new Error("invert: does not exist");
-  return mod(x2, modulo);
-}
-function assertIsSquare(Fp2, root2, n) {
-  if (!Fp2.eql(Fp2.sqr(root2), n))
-    throw new Error("Cannot find square root");
-}
-function sqrt3mod4(Fp2, n) {
-  const p1div4 = (Fp2.ORDER + _1n$3) / _4n;
-  const root2 = Fp2.pow(n, p1div4);
-  assertIsSquare(Fp2, root2, n);
-  return root2;
-}
-function sqrt5mod8(Fp2, n) {
-  const p5div8 = (Fp2.ORDER - _5n$1) / _8n$2;
-  const n2 = Fp2.mul(n, _2n$2);
-  const v2 = Fp2.pow(n2, p5div8);
-  const nv = Fp2.mul(n, v2);
-  const i = Fp2.mul(Fp2.mul(nv, _2n$2), v2);
-  const root2 = Fp2.mul(nv, Fp2.sub(i, Fp2.ONE));
-  assertIsSquare(Fp2, root2, n);
-  return root2;
-}
-function sqrt9mod16(P) {
-  const Fp_ = Field(P);
-  const tn = tonelliShanks(P);
-  const c1 = tn(Fp_, Fp_.neg(Fp_.ONE));
-  const c2 = tn(Fp_, c1);
-  const c3 = tn(Fp_, Fp_.neg(c1));
-  const c4 = (P + _7n) / _16n;
-  return (Fp2, n) => {
-    let tv1 = Fp2.pow(n, c4);
-    let tv2 = Fp2.mul(tv1, c1);
-    const tv3 = Fp2.mul(tv1, c2);
-    const tv4 = Fp2.mul(tv1, c3);
-    const e1 = Fp2.eql(Fp2.sqr(tv2), n);
-    const e2 = Fp2.eql(Fp2.sqr(tv3), n);
-    tv1 = Fp2.cmov(tv1, tv2, e1);
-    tv2 = Fp2.cmov(tv4, tv3, e2);
-    const e3 = Fp2.eql(Fp2.sqr(tv2), n);
-    const root2 = Fp2.cmov(tv1, tv2, e3);
-    assertIsSquare(Fp2, root2, n);
-    return root2;
-  };
-}
-function tonelliShanks(P) {
-  if (P < _3n)
-    throw new Error("sqrt is not defined for small field");
-  let Q = P - _1n$3;
-  let S = 0;
-  while (Q % _2n$2 === _0n$2) {
-    Q /= _2n$2;
-    S++;
-  }
-  let Z = _2n$2;
-  const _Fp = Field(P);
-  while (FpLegendre(_Fp, Z) === 1) {
-    if (Z++ > 1e3)
-      throw new Error("Cannot find square root: probably non-prime P");
-  }
-  if (S === 1)
-    return sqrt3mod4;
-  let cc = _Fp.pow(Z, Q);
-  const Q1div2 = (Q + _1n$3) / _2n$2;
-  return function tonelliSlow(Fp2, n) {
-    if (Fp2.is0(n))
-      return n;
-    if (FpLegendre(Fp2, n) !== 1)
-      throw new Error("Cannot find square root");
-    let M2 = S;
-    let c = Fp2.mul(Fp2.ONE, cc);
-    let t = Fp2.pow(n, Q);
-    let R = Fp2.pow(n, Q1div2);
-    while (!Fp2.eql(t, Fp2.ONE)) {
-      if (Fp2.is0(t))
-        return Fp2.ZERO;
-      let i = 1;
-      let t_tmp = Fp2.sqr(t);
-      while (!Fp2.eql(t_tmp, Fp2.ONE)) {
-        i++;
-        t_tmp = Fp2.sqr(t_tmp);
-        if (i === M2)
-          throw new Error("Cannot find square root");
-      }
-      const exponent = _1n$3 << BigInt(M2 - i - 1);
-      const b = Fp2.pow(c, exponent);
-      M2 = i;
-      c = Fp2.sqr(b);
-      t = Fp2.mul(t, c);
-      R = Fp2.mul(R, b);
-    }
-    return R;
-  };
-}
-function FpSqrt(P) {
-  if (P % _4n === _3n)
-    return sqrt3mod4;
-  if (P % _8n$2 === _5n$1)
-    return sqrt5mod8;
-  if (P % _16n === _9n)
-    return sqrt9mod16(P);
-  return tonelliShanks(P);
-}
-const isNegativeLE = (num, modulo) => (mod(num, modulo) & _1n$3) === _1n$3;
-const FIELD_FIELDS = [
-  "create",
-  "isValid",
-  "is0",
-  "neg",
-  "inv",
-  "sqrt",
-  "sqr",
-  "eql",
-  "add",
-  "sub",
-  "mul",
-  "pow",
-  "div",
-  "addN",
-  "subN",
-  "mulN",
-  "sqrN"
-];
-function validateField(field) {
-  const initial = {
-    ORDER: "bigint",
-    MASK: "bigint",
-    BYTES: "number",
-    BITS: "number"
-  };
-  const opts = FIELD_FIELDS.reduce((map, val) => {
-    map[val] = "function";
-    return map;
-  }, initial);
-  _validateObject(field, opts);
-  return field;
-}
-function FpPow(Fp2, num, power) {
-  if (power < _0n$2)
-    throw new Error("invalid exponent, negatives unsupported");
-  if (power === _0n$2)
-    return Fp2.ONE;
-  if (power === _1n$3)
-    return num;
-  let p = Fp2.ONE;
-  let d = num;
-  while (power > _0n$2) {
-    if (power & _1n$3)
-      p = Fp2.mul(p, d);
-    d = Fp2.sqr(d);
-    power >>= _1n$3;
-  }
-  return p;
-}
-function FpInvertBatch(Fp2, nums, passZero = false) {
-  const inverted = new Array(nums.length).fill(passZero ? Fp2.ZERO : void 0);
-  const multipliedAcc = nums.reduce((acc, num, i) => {
-    if (Fp2.is0(num))
-      return acc;
-    inverted[i] = acc;
-    return Fp2.mul(acc, num);
-  }, Fp2.ONE);
-  const invertedAcc = Fp2.inv(multipliedAcc);
-  nums.reduceRight((acc, num, i) => {
-    if (Fp2.is0(num))
-      return acc;
-    inverted[i] = Fp2.mul(acc, inverted[i]);
-    return Fp2.mul(acc, num);
-  }, invertedAcc);
-  return inverted;
-}
-function FpLegendre(Fp2, n) {
-  const p1mod2 = (Fp2.ORDER - _1n$3) / _2n$2;
-  const powered = Fp2.pow(n, p1mod2);
-  const yes = Fp2.eql(powered, Fp2.ONE);
-  const zero = Fp2.eql(powered, Fp2.ZERO);
-  const no = Fp2.eql(powered, Fp2.neg(Fp2.ONE));
-  if (!yes && !zero && !no)
-    throw new Error("invalid Legendre symbol result");
-  return yes ? 1 : zero ? 0 : -1;
-}
-function nLength(n, nBitLength) {
-  if (nBitLength !== void 0)
-    anumber(nBitLength);
-  const _nBitLength = nBitLength !== void 0 ? nBitLength : n.toString(2).length;
-  const nByteLength = Math.ceil(_nBitLength / 8);
-  return { nBitLength: _nBitLength, nByteLength };
-}
-function Field(ORDER, bitLenOrOpts, isLE = false, opts = {}) {
-  if (ORDER <= _0n$2)
-    throw new Error("invalid field: expected ORDER > 0, got " + ORDER);
-  let _nbitLength = void 0;
-  let _sqrt = void 0;
-  let modFromBytes = false;
-  let allowedLengths = void 0;
-  if (typeof bitLenOrOpts === "object" && bitLenOrOpts != null) {
-    if (opts.sqrt || isLE)
-      throw new Error("cannot specify opts in two arguments");
-    const _opts = bitLenOrOpts;
-    if (_opts.BITS)
-      _nbitLength = _opts.BITS;
-    if (_opts.sqrt)
-      _sqrt = _opts.sqrt;
-    if (typeof _opts.isLE === "boolean")
-      isLE = _opts.isLE;
-    if (typeof _opts.modFromBytes === "boolean")
-      modFromBytes = _opts.modFromBytes;
-    allowedLengths = _opts.allowedLengths;
-  } else {
-    if (typeof bitLenOrOpts === "number")
-      _nbitLength = bitLenOrOpts;
-    if (opts.sqrt)
-      _sqrt = opts.sqrt;
-  }
-  const { nBitLength: BITS, nByteLength: BYTES } = nLength(ORDER, _nbitLength);
-  if (BYTES > 2048)
-    throw new Error("invalid field: expected ORDER of <= 2048 bytes");
-  let sqrtP;
-  const f = Object.freeze({
-    ORDER,
-    isLE,
-    BITS,
-    BYTES,
-    MASK: bitMask(BITS),
-    ZERO: _0n$2,
-    ONE: _1n$3,
-    allowedLengths,
-    create: (num) => mod(num, ORDER),
-    isValid: (num) => {
-      if (typeof num !== "bigint")
-        throw new Error("invalid field element: expected bigint, got " + typeof num);
-      return _0n$2 <= num && num < ORDER;
-    },
-    is0: (num) => num === _0n$2,
-    // is valid and invertible
-    isValidNot0: (num) => !f.is0(num) && f.isValid(num),
-    isOdd: (num) => (num & _1n$3) === _1n$3,
-    neg: (num) => mod(-num, ORDER),
-    eql: (lhs, rhs) => lhs === rhs,
-    sqr: (num) => mod(num * num, ORDER),
-    add: (lhs, rhs) => mod(lhs + rhs, ORDER),
-    sub: (lhs, rhs) => mod(lhs - rhs, ORDER),
-    mul: (lhs, rhs) => mod(lhs * rhs, ORDER),
-    pow: (num, power) => FpPow(f, num, power),
-    div: (lhs, rhs) => mod(lhs * invert(rhs, ORDER), ORDER),
-    // Same as above, but doesn't normalize
-    sqrN: (num) => num * num,
-    addN: (lhs, rhs) => lhs + rhs,
-    subN: (lhs, rhs) => lhs - rhs,
-    mulN: (lhs, rhs) => lhs * rhs,
-    inv: (num) => invert(num, ORDER),
-    sqrt: _sqrt || ((n) => {
-      if (!sqrtP)
-        sqrtP = FpSqrt(ORDER);
-      return sqrtP(f, n);
-    }),
-    toBytes: (num) => isLE ? numberToBytesLE(num, BYTES) : numberToBytesBE(num, BYTES),
-    fromBytes: (bytes, skipValidation = true) => {
-      if (allowedLengths) {
-        if (!allowedLengths.includes(bytes.length) || bytes.length > BYTES) {
-          throw new Error("Field.fromBytes: expected " + allowedLengths + " bytes, got " + bytes.length);
-        }
-        const padded = new Uint8Array(BYTES);
-        padded.set(bytes, isLE ? 0 : padded.length - bytes.length);
-        bytes = padded;
-      }
-      if (bytes.length !== BYTES)
-        throw new Error("Field.fromBytes: expected " + BYTES + " bytes, got " + bytes.length);
-      let scalar = isLE ? bytesToNumberLE(bytes) : bytesToNumberBE(bytes);
-      if (modFromBytes)
-        scalar = mod(scalar, ORDER);
-      if (!skipValidation) {
-        if (!f.isValid(scalar))
-          throw new Error("invalid field element: outside of range 0..ORDER");
-      }
-      return scalar;
-    },
-    // TODO: we don't need it here, move out to separate fn
-    invertBatch: (lst) => FpInvertBatch(f, lst),
-    // We can't move this out because Fp6, Fp12 implement it
-    // and it's unclear what to return in there.
-    cmov: (a, b, c) => c ? b : a
-  });
-  return Object.freeze(f);
-}
-/*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const _0n$1 = BigInt(0);
-const _1n$2 = BigInt(1);
-function negateCt(condition, item2) {
-  const neg = item2.negate();
-  return condition ? neg : item2;
-}
-function normalizeZ(c, points) {
-  const invertedZs = FpInvertBatch(c.Fp, points.map((p) => p.Z));
-  return points.map((p, i) => c.fromAffine(p.toAffine(invertedZs[i])));
-}
-function validateW(W, bits) {
-  if (!Number.isSafeInteger(W) || W <= 0 || W > bits)
-    throw new Error("invalid window size, expected [1.." + bits + "], got W=" + W);
-}
-function calcWOpts(W, scalarBits) {
-  validateW(W, scalarBits);
-  const windows = Math.ceil(scalarBits / W) + 1;
-  const windowSize = 2 ** (W - 1);
-  const maxNumber = 2 ** W;
-  const mask2 = bitMask(W);
-  const shiftBy = BigInt(W);
-  return { windows, windowSize, mask: mask2, maxNumber, shiftBy };
-}
-function calcOffsets(n, window2, wOpts) {
-  const { windowSize, mask: mask2, maxNumber, shiftBy } = wOpts;
-  let wbits = Number(n & mask2);
-  let nextN = n >> shiftBy;
-  if (wbits > windowSize) {
-    wbits -= maxNumber;
-    nextN += _1n$2;
-  }
-  const offsetStart = window2 * windowSize;
-  const offset = offsetStart + Math.abs(wbits) - 1;
-  const isZero = wbits === 0;
-  const isNeg = wbits < 0;
-  const isNegF = window2 % 2 !== 0;
-  const offsetF = offsetStart;
-  return { nextN, offset, isZero, isNeg, isNegF, offsetF };
-}
-function validateMSMPoints(points, c) {
-  if (!Array.isArray(points))
-    throw new Error("array expected");
-  points.forEach((p, i) => {
-    if (!(p instanceof c))
-      throw new Error("invalid point at index " + i);
-  });
-}
-function validateMSMScalars(scalars, field) {
-  if (!Array.isArray(scalars))
-    throw new Error("array of scalars expected");
-  scalars.forEach((s, i) => {
-    if (!field.isValid(s))
-      throw new Error("invalid scalar at index " + i);
-  });
-}
-const pointPrecomputes = /* @__PURE__ */ new WeakMap();
-const pointWindowSizes = /* @__PURE__ */ new WeakMap();
-function getW(P) {
-  return pointWindowSizes.get(P) || 1;
-}
-function assert0(n) {
-  if (n !== _0n$1)
-    throw new Error("invalid wNAF");
-}
-class wNAF {
-  // Parametrized with a given Point class (not individual point)
-  constructor(Point, bits) {
-    this.BASE = Point.BASE;
-    this.ZERO = Point.ZERO;
-    this.Fn = Point.Fn;
-    this.bits = bits;
-  }
-  // non-const time multiplication ladder
-  _unsafeLadder(elm, n, p = this.ZERO) {
-    let d = elm;
-    while (n > _0n$1) {
-      if (n & _1n$2)
-        p = p.add(d);
-      d = d.double();
-      n >>= _1n$2;
-    }
-    return p;
-  }
-  /**
-   * Creates a wNAF precomputation window. Used for caching.
-   * Default window size is set by `utils.precompute()` and is equal to 8.
-   * Number of precomputed points depends on the curve size:
-   * 2^(𝑊−1) * (Math.ceil(𝑛 / 𝑊) + 1), where:
-   * - 𝑊 is the window size
-   * - 𝑛 is the bitlength of the curve order.
-   * For a 256-bit curve and window size 8, the number of precomputed points is 128 * 33 = 4224.
-   * @param point Point instance
-   * @param W window size
-   * @returns precomputed point tables flattened to a single array
-   */
-  precomputeWindow(point, W) {
-    const { windows, windowSize } = calcWOpts(W, this.bits);
-    const points = [];
-    let p = point;
-    let base = p;
-    for (let window2 = 0; window2 < windows; window2++) {
-      base = p;
-      points.push(base);
-      for (let i = 1; i < windowSize; i++) {
-        base = base.add(p);
-        points.push(base);
-      }
-      p = base.double();
-    }
-    return points;
-  }
-  /**
-   * Implements ec multiplication using precomputed tables and w-ary non-adjacent form.
-   * More compact implementation:
-   * https://github.com/paulmillr/noble-secp256k1/blob/47cb1669b6e506ad66b35fe7d76132ae97465da2/index.ts#L502-L541
-   * @returns real and fake (for const-time) points
-   */
-  wNAF(W, precomputes, n) {
-    if (!this.Fn.isValid(n))
-      throw new Error("invalid scalar");
-    let p = this.ZERO;
-    let f = this.BASE;
-    const wo = calcWOpts(W, this.bits);
-    for (let window2 = 0; window2 < wo.windows; window2++) {
-      const { nextN, offset, isZero, isNeg, isNegF, offsetF } = calcOffsets(n, window2, wo);
-      n = nextN;
-      if (isZero) {
-        f = f.add(negateCt(isNegF, precomputes[offsetF]));
-      } else {
-        p = p.add(negateCt(isNeg, precomputes[offset]));
-      }
-    }
-    assert0(n);
-    return { p, f };
-  }
-  /**
-   * Implements ec unsafe (non const-time) multiplication using precomputed tables and w-ary non-adjacent form.
-   * @param acc accumulator point to add result of multiplication
-   * @returns point
-   */
-  wNAFUnsafe(W, precomputes, n, acc = this.ZERO) {
-    const wo = calcWOpts(W, this.bits);
-    for (let window2 = 0; window2 < wo.windows; window2++) {
-      if (n === _0n$1)
-        break;
-      const { nextN, offset, isZero, isNeg } = calcOffsets(n, window2, wo);
-      n = nextN;
-      if (isZero) {
-        continue;
-      } else {
-        const item2 = precomputes[offset];
-        acc = acc.add(isNeg ? item2.negate() : item2);
-      }
-    }
-    assert0(n);
-    return acc;
-  }
-  getPrecomputes(W, point, transform) {
-    let comp = pointPrecomputes.get(point);
-    if (!comp) {
-      comp = this.precomputeWindow(point, W);
-      if (W !== 1) {
-        if (typeof transform === "function")
-          comp = transform(comp);
-        pointPrecomputes.set(point, comp);
-      }
-    }
-    return comp;
-  }
-  cached(point, scalar, transform) {
-    const W = getW(point);
-    return this.wNAF(W, this.getPrecomputes(W, point, transform), scalar);
-  }
-  unsafe(point, scalar, transform, prev) {
-    const W = getW(point);
-    if (W === 1)
-      return this._unsafeLadder(point, scalar, prev);
-    return this.wNAFUnsafe(W, this.getPrecomputes(W, point, transform), scalar, prev);
-  }
-  // We calculate precomputes for elliptic curve point multiplication
-  // using windowed method. This specifies window size and
-  // stores precomputed values. Usually only base point would be precomputed.
-  createCache(P, W) {
-    validateW(W, this.bits);
-    pointWindowSizes.set(P, W);
-    pointPrecomputes.delete(P);
-  }
-  hasCache(elm) {
-    return getW(elm) !== 1;
-  }
-}
-function pippenger(c, fieldN, points, scalars) {
-  validateMSMPoints(points, c);
-  validateMSMScalars(scalars, fieldN);
-  const plength = points.length;
-  const slength = scalars.length;
-  if (plength !== slength)
-    throw new Error("arrays of points and scalars must have equal length");
-  const zero = c.ZERO;
-  const wbits = bitLen(BigInt(plength));
-  let windowSize = 1;
-  if (wbits > 12)
-    windowSize = wbits - 3;
-  else if (wbits > 4)
-    windowSize = wbits - 2;
-  else if (wbits > 0)
-    windowSize = 2;
-  const MASK = bitMask(windowSize);
-  const buckets = new Array(Number(MASK) + 1).fill(zero);
-  const lastBits = Math.floor((fieldN.BITS - 1) / windowSize) * windowSize;
-  let sum = zero;
-  for (let i = lastBits; i >= 0; i -= windowSize) {
-    buckets.fill(zero);
-    for (let j = 0; j < slength; j++) {
-      const scalar = scalars[j];
-      const wbits2 = Number(scalar >> BigInt(i) & MASK);
-      buckets[wbits2] = buckets[wbits2].add(points[j]);
-    }
-    let resI = zero;
-    for (let j = buckets.length - 1, sumI = zero; j > 0; j--) {
-      sumI = sumI.add(buckets[j]);
-      resI = resI.add(sumI);
-    }
-    sum = sum.add(resI);
-    if (i !== 0)
-      for (let j = 0; j < windowSize; j++)
-        sum = sum.double();
-  }
-  return sum;
-}
-function createField(order, field, isLE) {
-  if (field) {
-    if (field.ORDER !== order)
-      throw new Error("Field.ORDER must match order: Fp == p, Fn == n");
-    validateField(field);
-    return field;
-  } else {
-    return Field(order, { isLE });
-  }
-}
-function _createCurveFields(type, CURVE, curveOpts = {}, FpFnLE) {
-  if (FpFnLE === void 0)
-    FpFnLE = type === "edwards";
-  if (!CURVE || typeof CURVE !== "object")
-    throw new Error(`expected valid ${type} CURVE object`);
-  for (const p of ["p", "n", "h"]) {
-    const val = CURVE[p];
-    if (!(typeof val === "bigint" && val > _0n$1))
-      throw new Error(`CURVE.${p} must be positive bigint`);
-  }
-  const Fp2 = createField(CURVE.p, curveOpts.Fp, FpFnLE);
-  const Fn = createField(CURVE.n, curveOpts.Fn, FpFnLE);
-  const _b2 = "d";
-  const params = ["Gx", "Gy", "a", _b2];
-  for (const p of params) {
-    if (!Fp2.isValid(CURVE[p]))
-      throw new Error(`CURVE.${p} must be valid field element of CURVE.Fp`);
-  }
-  CURVE = Object.freeze(Object.assign({}, CURVE));
-  return { CURVE, Fp: Fp2, Fn };
-}
-/*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const _0n = BigInt(0), _1n$1 = BigInt(1), _2n$1 = BigInt(2), _8n$1 = BigInt(8);
-function isEdValidXY(Fp2, CURVE, x2, y) {
-  const x22 = Fp2.sqr(x2);
-  const y2 = Fp2.sqr(y);
-  const left = Fp2.add(Fp2.mul(CURVE.a, x22), y2);
-  const right = Fp2.add(Fp2.ONE, Fp2.mul(CURVE.d, Fp2.mul(x22, y2)));
-  return Fp2.eql(left, right);
-}
-function edwards(params, extraOpts = {}) {
-  const validated = _createCurveFields("edwards", params, extraOpts, extraOpts.FpFnLE);
-  const { Fp: Fp2, Fn } = validated;
-  let CURVE = validated.CURVE;
-  const { h: cofactor } = CURVE;
-  _validateObject(extraOpts, {}, { uvRatio: "function" });
-  const MASK = _2n$1 << BigInt(Fn.BYTES * 8) - _1n$1;
-  const modP = (n) => Fp2.create(n);
-  const uvRatio2 = extraOpts.uvRatio || ((u, v2) => {
-    try {
-      return { isValid: true, value: Fp2.sqrt(Fp2.div(u, v2)) };
-    } catch (e) {
-      return { isValid: false, value: _0n };
-    }
-  });
-  if (!isEdValidXY(Fp2, CURVE, CURVE.Gx, CURVE.Gy))
-    throw new Error("bad curve params: generator point");
-  function acoord(title, n, banZero = false) {
-    const min = banZero ? _1n$1 : _0n;
-    aInRange("coordinate " + title, n, min, MASK);
-    return n;
-  }
-  function aextpoint(other) {
-    if (!(other instanceof Point))
-      throw new Error("ExtendedPoint expected");
-  }
-  const toAffineMemo = memoized((p, iz) => {
-    const { X, Y, Z } = p;
-    const is0 = p.is0();
-    if (iz == null)
-      iz = is0 ? _8n$1 : Fp2.inv(Z);
-    const x2 = modP(X * iz);
-    const y = modP(Y * iz);
-    const zz = Fp2.mul(Z, iz);
-    if (is0)
-      return { x: _0n, y: _1n$1 };
-    if (zz !== _1n$1)
-      throw new Error("invZ was invalid");
-    return { x: x2, y };
-  });
-  const assertValidMemo = memoized((p) => {
-    const { a, d } = CURVE;
-    if (p.is0())
-      throw new Error("bad point: ZERO");
-    const { X, Y, Z, T } = p;
-    const X2 = modP(X * X);
-    const Y2 = modP(Y * Y);
-    const Z2 = modP(Z * Z);
-    const Z4 = modP(Z2 * Z2);
-    const aX2 = modP(X2 * a);
-    const left = modP(Z2 * modP(aX2 + Y2));
-    const right = modP(Z4 + modP(d * modP(X2 * Y2)));
-    if (left !== right)
-      throw new Error("bad point: equation left != right (1)");
-    const XY = modP(X * Y);
-    const ZT = modP(Z * T);
-    if (XY !== ZT)
-      throw new Error("bad point: equation left != right (2)");
-    return true;
-  });
-  class Point {
-    constructor(X, Y, Z, T) {
-      this.X = acoord("x", X);
-      this.Y = acoord("y", Y);
-      this.Z = acoord("z", Z, true);
-      this.T = acoord("t", T);
-      Object.freeze(this);
-    }
-    static CURVE() {
-      return CURVE;
-    }
-    static fromAffine(p) {
-      if (p instanceof Point)
-        throw new Error("extended point not allowed");
-      const { x: x2, y } = p || {};
-      acoord("x", x2);
-      acoord("y", y);
-      return new Point(x2, y, _1n$1, modP(x2 * y));
-    }
-    // Uses algo from RFC8032 5.1.3.
-    static fromBytes(bytes, zip215 = false) {
-      const len = Fp2.BYTES;
-      const { a, d } = CURVE;
-      bytes = copyBytes(_abytes2(bytes, len, "point"));
-      _abool2(zip215, "zip215");
-      const normed = copyBytes(bytes);
-      const lastByte = bytes[len - 1];
-      normed[len - 1] = lastByte & -129;
-      const y = bytesToNumberLE(normed);
-      const max = zip215 ? MASK : Fp2.ORDER;
-      aInRange("point.y", y, _0n, max);
-      const y2 = modP(y * y);
-      const u = modP(y2 - _1n$1);
-      const v2 = modP(d * y2 - a);
-      let { isValid, value: x2 } = uvRatio2(u, v2);
-      if (!isValid)
-        throw new Error("bad point: invalid y coordinate");
-      const isXOdd = (x2 & _1n$1) === _1n$1;
-      const isLastByteOdd = (lastByte & 128) !== 0;
-      if (!zip215 && x2 === _0n && isLastByteOdd)
-        throw new Error("bad point: x=0 and x_0=1");
-      if (isLastByteOdd !== isXOdd)
-        x2 = modP(-x2);
-      return Point.fromAffine({ x: x2, y });
-    }
-    static fromHex(bytes, zip215 = false) {
-      return Point.fromBytes(ensureBytes("point", bytes), zip215);
-    }
-    get x() {
-      return this.toAffine().x;
-    }
-    get y() {
-      return this.toAffine().y;
-    }
-    precompute(windowSize = 8, isLazy = true) {
-      wnaf.createCache(this, windowSize);
-      if (!isLazy)
-        this.multiply(_2n$1);
-      return this;
-    }
-    // Useful in fromAffine() - not for fromBytes(), which always created valid points.
-    assertValidity() {
-      assertValidMemo(this);
-    }
-    // Compare one point to another.
-    equals(other) {
-      aextpoint(other);
-      const { X: X1, Y: Y1, Z: Z1 } = this;
-      const { X: X2, Y: Y2, Z: Z2 } = other;
-      const X1Z2 = modP(X1 * Z2);
-      const X2Z1 = modP(X2 * Z1);
-      const Y1Z2 = modP(Y1 * Z2);
-      const Y2Z1 = modP(Y2 * Z1);
-      return X1Z2 === X2Z1 && Y1Z2 === Y2Z1;
-    }
-    is0() {
-      return this.equals(Point.ZERO);
-    }
-    negate() {
-      return new Point(modP(-this.X), this.Y, this.Z, modP(-this.T));
-    }
-    // Fast algo for doubling Extended Point.
-    // https://hyperelliptic.org/EFD/g1p/auto-twisted-extended.html#doubling-dbl-2008-hwcd
-    // Cost: 4M + 4S + 1*a + 6add + 1*2.
-    double() {
-      const { a } = CURVE;
-      const { X: X1, Y: Y1, Z: Z1 } = this;
-      const A = modP(X1 * X1);
-      const B = modP(Y1 * Y1);
-      const C = modP(_2n$1 * modP(Z1 * Z1));
-      const D = modP(a * A);
-      const x1y1 = X1 + Y1;
-      const E = modP(modP(x1y1 * x1y1) - A - B);
-      const G = D + B;
-      const F = G - C;
-      const H = D - B;
-      const X3 = modP(E * F);
-      const Y3 = modP(G * H);
-      const T3 = modP(E * H);
-      const Z3 = modP(F * G);
-      return new Point(X3, Y3, Z3, T3);
-    }
-    // Fast algo for adding 2 Extended Points.
-    // https://hyperelliptic.org/EFD/g1p/auto-twisted-extended.html#addition-add-2008-hwcd
-    // Cost: 9M + 1*a + 1*d + 7add.
-    add(other) {
-      aextpoint(other);
-      const { a, d } = CURVE;
-      const { X: X1, Y: Y1, Z: Z1, T: T1 } = this;
-      const { X: X2, Y: Y2, Z: Z2, T: T2 } = other;
-      const A = modP(X1 * X2);
-      const B = modP(Y1 * Y2);
-      const C = modP(T1 * d * T2);
-      const D = modP(Z1 * Z2);
-      const E = modP((X1 + Y1) * (X2 + Y2) - A - B);
-      const F = D - C;
-      const G = D + C;
-      const H = modP(B - a * A);
-      const X3 = modP(E * F);
-      const Y3 = modP(G * H);
-      const T3 = modP(E * H);
-      const Z3 = modP(F * G);
-      return new Point(X3, Y3, Z3, T3);
-    }
-    subtract(other) {
-      return this.add(other.negate());
-    }
-    // Constant-time multiplication.
-    multiply(scalar) {
-      if (!Fn.isValidNot0(scalar))
-        throw new Error("invalid scalar: expected 1 <= sc < curve.n");
-      const { p, f } = wnaf.cached(this, scalar, (p2) => normalizeZ(Point, p2));
-      return normalizeZ(Point, [p, f])[0];
-    }
-    // Non-constant-time multiplication. Uses double-and-add algorithm.
-    // It's faster, but should only be used when you don't care about
-    // an exposed private key e.g. sig verification.
-    // Does NOT allow scalars higher than CURVE.n.
-    // Accepts optional accumulator to merge with multiply (important for sparse scalars)
-    multiplyUnsafe(scalar, acc = Point.ZERO) {
-      if (!Fn.isValid(scalar))
-        throw new Error("invalid scalar: expected 0 <= sc < curve.n");
-      if (scalar === _0n)
-        return Point.ZERO;
-      if (this.is0() || scalar === _1n$1)
-        return this;
-      return wnaf.unsafe(this, scalar, (p) => normalizeZ(Point, p), acc);
-    }
-    // Checks if point is of small order.
-    // If you add something to small order point, you will have "dirty"
-    // point with torsion component.
-    // Multiplies point by cofactor and checks if the result is 0.
-    isSmallOrder() {
-      return this.multiplyUnsafe(cofactor).is0();
-    }
-    // Multiplies point by curve order and checks if the result is 0.
-    // Returns `false` is the point is dirty.
-    isTorsionFree() {
-      return wnaf.unsafe(this, CURVE.n).is0();
-    }
-    // Converts Extended point to default (x, y) coordinates.
-    // Can accept precomputed Z^-1 - for example, from invertBatch.
-    toAffine(invertedZ) {
-      return toAffineMemo(this, invertedZ);
-    }
-    clearCofactor() {
-      if (cofactor === _1n$1)
-        return this;
-      return this.multiplyUnsafe(cofactor);
-    }
-    toBytes() {
-      const { x: x2, y } = this.toAffine();
-      const bytes = Fp2.toBytes(y);
-      bytes[bytes.length - 1] |= x2 & _1n$1 ? 128 : 0;
-      return bytes;
-    }
-    toHex() {
-      return bytesToHex(this.toBytes());
-    }
-    toString() {
-      return `<Point ${this.is0() ? "ZERO" : this.toHex()}>`;
-    }
-    // TODO: remove
-    get ex() {
-      return this.X;
-    }
-    get ey() {
-      return this.Y;
-    }
-    get ez() {
-      return this.Z;
-    }
-    get et() {
-      return this.T;
-    }
-    static normalizeZ(points) {
-      return normalizeZ(Point, points);
-    }
-    static msm(points, scalars) {
-      return pippenger(Point, Fn, points, scalars);
-    }
-    _setWindowSize(windowSize) {
-      this.precompute(windowSize);
-    }
-    toRawBytes() {
-      return this.toBytes();
-    }
-  }
-  Point.BASE = new Point(CURVE.Gx, CURVE.Gy, _1n$1, modP(CURVE.Gx * CURVE.Gy));
-  Point.ZERO = new Point(_0n, _1n$1, _1n$1, _0n);
-  Point.Fp = Fp2;
-  Point.Fn = Fn;
-  const wnaf = new wNAF(Point, Fn.BITS);
-  Point.BASE.precompute(8);
-  return Point;
-}
-function eddsa(Point, cHash, eddsaOpts = {}) {
-  if (typeof cHash !== "function")
-    throw new Error('"hash" function param is required');
-  _validateObject(eddsaOpts, {}, {
-    adjustScalarBytes: "function",
-    randomBytes: "function",
-    domain: "function",
-    prehash: "function",
-    mapToCurve: "function"
-  });
-  const { prehash } = eddsaOpts;
-  const { BASE, Fp: Fp2, Fn } = Point;
-  const randomBytes$1 = eddsaOpts.randomBytes || randomBytes;
-  const adjustScalarBytes2 = eddsaOpts.adjustScalarBytes || ((bytes) => bytes);
-  const domain = eddsaOpts.domain || ((data, ctx, phflag) => {
-    _abool2(phflag, "phflag");
-    if (ctx.length || phflag)
-      throw new Error("Contexts/pre-hash are not supported");
-    return data;
-  });
-  function modN_LE(hash) {
-    return Fn.create(bytesToNumberLE(hash));
-  }
-  function getPrivateScalar(key) {
-    const len = lengths.secretKey;
-    key = ensureBytes("private key", key, len);
-    const hashed = ensureBytes("hashed private key", cHash(key), 2 * len);
-    const head = adjustScalarBytes2(hashed.slice(0, len));
-    const prefix2 = hashed.slice(len, 2 * len);
-    const scalar = modN_LE(head);
-    return { head, prefix: prefix2, scalar };
-  }
-  function getExtendedPublicKey(secretKey) {
-    const { head, prefix: prefix2, scalar } = getPrivateScalar(secretKey);
-    const point = BASE.multiply(scalar);
-    const pointBytes = point.toBytes();
-    return { head, prefix: prefix2, scalar, point, pointBytes };
-  }
-  function getPublicKey(secretKey) {
-    return getExtendedPublicKey(secretKey).pointBytes;
-  }
-  function hashDomainToScalar(context = Uint8Array.of(), ...msgs) {
-    const msg = concatBytes(...msgs);
-    return modN_LE(cHash(domain(msg, ensureBytes("context", context), !!prehash)));
-  }
-  function sign(msg, secretKey, options = {}) {
-    msg = ensureBytes("message", msg);
-    if (prehash)
-      msg = prehash(msg);
-    const { prefix: prefix2, scalar, pointBytes } = getExtendedPublicKey(secretKey);
-    const r2 = hashDomainToScalar(options.context, prefix2, msg);
-    const R = BASE.multiply(r2).toBytes();
-    const k = hashDomainToScalar(options.context, R, pointBytes, msg);
-    const s = Fn.create(r2 + k * scalar);
-    if (!Fn.isValid(s))
-      throw new Error("sign failed: invalid s");
-    const rs = concatBytes(R, Fn.toBytes(s));
-    return _abytes2(rs, lengths.signature, "result");
-  }
-  const verifyOpts = { zip215: true };
-  function verify(sig, msg, publicKey, options = verifyOpts) {
-    const { context, zip215 } = options;
-    const len = lengths.signature;
-    sig = ensureBytes("signature", sig, len);
-    msg = ensureBytes("message", msg);
-    publicKey = ensureBytes("publicKey", publicKey, lengths.publicKey);
-    if (zip215 !== void 0)
-      _abool2(zip215, "zip215");
-    if (prehash)
-      msg = prehash(msg);
-    const mid = len / 2;
-    const r2 = sig.subarray(0, mid);
-    const s = bytesToNumberLE(sig.subarray(mid, len));
-    let A, R, SB;
-    try {
-      A = Point.fromBytes(publicKey, zip215);
-      R = Point.fromBytes(r2, zip215);
-      SB = BASE.multiplyUnsafe(s);
-    } catch (error) {
-      return false;
-    }
-    if (!zip215 && A.isSmallOrder())
-      return false;
-    const k = hashDomainToScalar(context, R.toBytes(), A.toBytes(), msg);
-    const RkA = R.add(A.multiplyUnsafe(k));
-    return RkA.subtract(SB).clearCofactor().is0();
-  }
-  const _size = Fp2.BYTES;
-  const lengths = {
-    secretKey: _size,
-    publicKey: _size,
-    signature: 2 * _size,
-    seed: _size
-  };
-  function randomSecretKey(seed = randomBytes$1(lengths.seed)) {
-    return _abytes2(seed, lengths.seed, "seed");
-  }
-  function keygen(seed) {
-    const secretKey = utils.randomSecretKey(seed);
-    return { secretKey, publicKey: getPublicKey(secretKey) };
-  }
-  function isValidSecretKey(key) {
-    return isBytes(key) && key.length === Fn.BYTES;
-  }
-  function isValidPublicKey(key, zip215) {
-    try {
-      return !!Point.fromBytes(key, zip215);
-    } catch (error) {
-      return false;
-    }
-  }
-  const utils = {
-    getExtendedPublicKey,
-    randomSecretKey,
-    isValidSecretKey,
-    isValidPublicKey,
-    /**
-     * Converts ed public key to x public key. Uses formula:
-     * - ed25519:
-     *   - `(u, v) = ((1+y)/(1-y), sqrt(-486664)*u/x)`
-     *   - `(x, y) = (sqrt(-486664)*u/v, (u-1)/(u+1))`
-     * - ed448:
-     *   - `(u, v) = ((y-1)/(y+1), sqrt(156324)*u/x)`
-     *   - `(x, y) = (sqrt(156324)*u/v, (1+u)/(1-u))`
-     */
-    toMontgomery(publicKey) {
-      const { y } = Point.fromBytes(publicKey);
-      const size = lengths.publicKey;
-      const is25519 = size === 32;
-      if (!is25519 && size !== 57)
-        throw new Error("only defined for 25519 and 448");
-      const u = is25519 ? Fp2.div(_1n$1 + y, _1n$1 - y) : Fp2.div(y - _1n$1, y + _1n$1);
-      return Fp2.toBytes(u);
-    },
-    toMontgomerySecret(secretKey) {
-      const size = lengths.secretKey;
-      _abytes2(secretKey, size);
-      const hashed = cHash(secretKey.subarray(0, size));
-      return adjustScalarBytes2(hashed).subarray(0, size);
-    },
-    /** @deprecated */
-    randomPrivateKey: randomSecretKey,
-    /** @deprecated */
-    precompute(windowSize = 8, point = Point.BASE) {
-      return point.precompute(windowSize, false);
-    }
-  };
-  return Object.freeze({
-    keygen,
-    getPublicKey,
-    sign,
-    verify,
-    utils,
-    Point,
-    lengths
-  });
-}
-function _eddsa_legacy_opts_to_new(c) {
-  const CURVE = {
-    a: c.a,
-    d: c.d,
-    p: c.Fp.ORDER,
-    n: c.n,
-    h: c.h,
-    Gx: c.Gx,
-    Gy: c.Gy
-  };
-  const Fp2 = c.Fp;
-  const Fn = Field(CURVE.n, c.nBitLength, true);
-  const curveOpts = { Fp: Fp2, Fn, uvRatio: c.uvRatio };
-  const eddsaOpts = {
-    randomBytes: c.randomBytes,
-    adjustScalarBytes: c.adjustScalarBytes,
-    domain: c.domain,
-    prehash: c.prehash,
-    mapToCurve: c.mapToCurve
-  };
-  return { CURVE, curveOpts, hash: c.hash, eddsaOpts };
-}
-function _eddsa_new_output_to_legacy(c, eddsa2) {
-  const Point = eddsa2.Point;
-  const legacy = Object.assign({}, eddsa2, {
-    ExtendedPoint: Point,
-    CURVE: c,
-    nBitLength: Point.Fn.BITS,
-    nByteLength: Point.Fn.BYTES
-  });
-  return legacy;
-}
-function twistedEdwards(c) {
-  const { CURVE, curveOpts, hash, eddsaOpts } = _eddsa_legacy_opts_to_new(c);
-  const Point = edwards(CURVE, curveOpts);
-  const EDDSA = eddsa(Point, hash, eddsaOpts);
-  return _eddsa_new_output_to_legacy(c, EDDSA);
-}
-/*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const _1n = BigInt(1), _2n = BigInt(2);
-BigInt(3);
-const _5n = BigInt(5), _8n = BigInt(8);
-const ed25519_CURVE_p = BigInt("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed");
-const ed25519_CURVE = /* @__PURE__ */ (() => ({
-  p: ed25519_CURVE_p,
-  n: BigInt("0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed"),
-  h: _8n,
-  a: BigInt("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffec"),
-  d: BigInt("0x52036cee2b6ffe738cc740797779e89800700a4d4141d8ab75eb4dca135978a3"),
-  Gx: BigInt("0x216936d3cd6e53fec0a4e231fdd6dc5c692cc7609525a7b2c9562d608f25d51a"),
-  Gy: BigInt("0x6666666666666666666666666666666666666666666666666666666666666658")
-}))();
-function ed25519_pow_2_252_3(x2) {
-  const _10n = BigInt(10), _20n = BigInt(20), _40n = BigInt(40), _80n = BigInt(80);
-  const P = ed25519_CURVE_p;
-  const x22 = x2 * x2 % P;
-  const b2 = x22 * x2 % P;
-  const b4 = pow2(b2, _2n, P) * b2 % P;
-  const b5 = pow2(b4, _1n, P) * x2 % P;
-  const b10 = pow2(b5, _5n, P) * b5 % P;
-  const b20 = pow2(b10, _10n, P) * b10 % P;
-  const b40 = pow2(b20, _20n, P) * b20 % P;
-  const b80 = pow2(b40, _40n, P) * b40 % P;
-  const b160 = pow2(b80, _80n, P) * b80 % P;
-  const b240 = pow2(b160, _80n, P) * b80 % P;
-  const b250 = pow2(b240, _10n, P) * b10 % P;
-  const pow_p_5_8 = pow2(b250, _2n, P) * x2 % P;
-  return { pow_p_5_8, b2 };
-}
-function adjustScalarBytes(bytes) {
-  bytes[0] &= 248;
-  bytes[31] &= 127;
-  bytes[31] |= 64;
-  return bytes;
-}
-const ED25519_SQRT_M1 = /* @__PURE__ */ BigInt("19681161376707505956807079304988542015446066515923890162744021073123829784752");
-function uvRatio(u, v2) {
-  const P = ed25519_CURVE_p;
-  const v3 = mod(v2 * v2 * v2, P);
-  const v7 = mod(v3 * v3 * v2, P);
-  const pow = ed25519_pow_2_252_3(u * v7).pow_p_5_8;
-  let x2 = mod(u * v3 * pow, P);
-  const vx2 = mod(v2 * x2 * x2, P);
-  const root1 = x2;
-  const root2 = mod(x2 * ED25519_SQRT_M1, P);
-  const useRoot1 = vx2 === u;
-  const useRoot2 = vx2 === mod(-u, P);
-  const noRoot = vx2 === mod(-u * ED25519_SQRT_M1, P);
-  if (useRoot1)
-    x2 = root1;
-  if (useRoot2 || noRoot)
-    x2 = root2;
-  if (isNegativeLE(x2, P))
-    x2 = mod(-x2, P);
-  return { isValid: useRoot1 || useRoot2, value: x2 };
-}
-const Fp = /* @__PURE__ */ (() => Field(ed25519_CURVE.p, { isLE: true }))();
-const ed25519Defaults = /* @__PURE__ */ (() => ({
-  ...ed25519_CURVE,
-  Fp,
-  hash: sha512,
-  adjustScalarBytes,
-  // dom2
-  // Ratio of u to v. Allows us to combine inversion and square root. Uses algo from RFC8032 5.1.3.
-  // Constant-time, u/√v
-  uvRatio
-}))();
-const ed25519 = /* @__PURE__ */ (() => twistedEdwards(ed25519Defaults))();
-const encodeLenBytes = (len) => {
-  if (len <= 127) {
-    return 1;
-  } else if (len <= 255) {
-    return 2;
-  } else if (len <= 65535) {
-    return 3;
-  } else if (len <= 16777215) {
-    return 4;
-  } else {
-    throw InputError.fromCode(new DerEncodeErrorCode("Length too long (> 4 bytes)"));
-  }
-};
-const encodeLen = (buf, offset, len) => {
-  if (len <= 127) {
-    buf[offset] = len;
-    return 1;
-  } else if (len <= 255) {
-    buf[offset] = 129;
-    buf[offset + 1] = len;
-    return 2;
-  } else if (len <= 65535) {
-    buf[offset] = 130;
-    buf[offset + 1] = len >> 8;
-    buf[offset + 2] = len;
-    return 3;
-  } else if (len <= 16777215) {
-    buf[offset] = 131;
-    buf[offset + 1] = len >> 16;
-    buf[offset + 2] = len >> 8;
-    buf[offset + 3] = len;
-    return 4;
-  } else {
-    throw InputError.fromCode(new DerEncodeErrorCode("Length too long (> 4 bytes)"));
-  }
-};
-const decodeLenBytes = (buf, offset) => {
-  if (buf[offset] < 128)
-    return 1;
-  if (buf[offset] === 128)
-    throw InputError.fromCode(new DerDecodeErrorCode("Invalid length 0"));
-  if (buf[offset] === 129)
-    return 2;
-  if (buf[offset] === 130)
-    return 3;
-  if (buf[offset] === 131)
-    return 4;
-  throw InputError.fromCode(new DerDecodeErrorCode("Length too long (> 4 bytes)"));
-};
-const decodeLen = (buf, offset) => {
-  const lenBytes = decodeLenBytes(buf, offset);
-  if (lenBytes === 1)
-    return buf[offset];
-  else if (lenBytes === 2)
-    return buf[offset + 1];
-  else if (lenBytes === 3)
-    return (buf[offset + 1] << 8) + buf[offset + 2];
-  else if (lenBytes === 4)
-    return (buf[offset + 1] << 16) + (buf[offset + 2] << 8) + buf[offset + 3];
-  throw InputError.fromCode(new DerDecodeErrorCode("Length too long (> 4 bytes)"));
-};
-Uint8Array.from([
-  ...[48, 12],
-  // SEQUENCE
-  ...[6, 10],
-  // OID with 10 bytes
-  ...[43, 6, 1, 4, 1, 131, 184, 67, 1, 1]
-  // DER encoded COSE
-]);
-const ED25519_OID = Uint8Array.from([
-  ...[48, 5],
-  // SEQUENCE
-  ...[6, 3],
-  // OID with 3 bytes
-  ...[43, 101, 112]
-  // id-Ed25519 OID
-]);
-Uint8Array.from([
-  ...[48, 16],
-  // SEQUENCE
-  ...[6, 7],
-  // OID with 7 bytes
-  ...[42, 134, 72, 206, 61, 2, 1],
-  // OID ECDSA
-  ...[6, 5],
-  // OID with 5 bytes
-  ...[43, 129, 4, 0, 10]
-  // OID secp256k1
-]);
-Uint8Array.from([
-  ...[48, 29],
-  // SEQUENCE, length 29 bytes
-  // Algorithm OID
-  ...[6, 13],
-  ...[43, 6, 1, 4, 1, 130, 220, 124, 5, 3, 1, 2, 1],
-  // Curve OID
-  ...[6, 12],
-  ...[43, 6, 1, 4, 1, 130, 220, 124, 5, 3, 2, 1]
-]);
-function wrapDER(payload, oid) {
-  const bitStringHeaderLength = 2 + encodeLenBytes(payload.byteLength + 1);
-  const len = oid.byteLength + bitStringHeaderLength + payload.byteLength;
-  let offset = 0;
-  const buf = new Uint8Array(1 + encodeLenBytes(len) + len);
-  buf[offset++] = 48;
-  offset += encodeLen(buf, offset, len);
-  buf.set(oid, offset);
-  offset += oid.byteLength;
-  buf[offset++] = 3;
-  offset += encodeLen(buf, offset, payload.byteLength + 1);
-  buf[offset++] = 0;
-  buf.set(new Uint8Array(payload), offset);
-  return buf;
-}
-const unwrapDER = (derEncoded, oid) => {
-  let offset = 0;
-  const expect = (n, msg) => {
-    if (buf[offset++] !== n) {
-      throw InputError.fromCode(new DerDecodeErrorCode(`Expected ${msg} at offset ${offset}`));
-    }
-  };
-  const buf = new Uint8Array(derEncoded);
-  expect(48, "sequence");
-  offset += decodeLenBytes(buf, offset);
-  if (!uint8Equals(buf.slice(offset, offset + oid.byteLength), oid)) {
-    throw InputError.fromCode(new DerDecodeErrorCode("Not the expected OID."));
-  }
-  offset += oid.byteLength;
-  expect(3, "bit string");
-  const payloadLen = decodeLen(buf, offset) - 1;
-  offset += decodeLenBytes(buf, offset);
-  expect(0, "0 padding");
-  const result = buf.slice(offset);
-  if (payloadLen !== result.length) {
-    throw InputError.fromCode(new DerDecodeLengthMismatchErrorCode(payloadLen, result.length));
-  }
-  return result;
-};
-function isObject(value) {
-  return value !== null && typeof value === "object";
-}
-const _Ed25519PublicKey = class _Ed25519PublicKey {
-  // `fromRaw` and `fromDer` should be used for instantiation, not this constructor.
-  constructor(key) {
-    __privateAdd(this, _rawKey);
-    __privateAdd(this, _derKey);
-    if (key.byteLength !== _Ed25519PublicKey.RAW_KEY_LENGTH) {
-      throw new Error("An Ed25519 public key must be exactly 32bytes long");
-    }
-    __privateSet(this, _rawKey, key);
-    __privateSet(this, _derKey, _Ed25519PublicKey.derEncode(key));
-  }
-  /**
-   * Construct Ed25519PublicKey from an existing PublicKey
-   * @param {unknown} maybeKey - existing PublicKey, ArrayBuffer, DerEncodedPublicKey, or hex string
-   * @returns {Ed25519PublicKey} Instance of Ed25519PublicKey
-   */
-  static from(maybeKey) {
-    if (typeof maybeKey === "string") {
-      const key = hexToBytes(maybeKey);
-      return this.fromRaw(key);
-    } else if (isObject(maybeKey)) {
-      const key = maybeKey;
-      if (isObject(key) && Object.hasOwnProperty.call(key, "__derEncodedPublicKey__")) {
-        return this.fromDer(key);
-      } else if (ArrayBuffer.isView(key)) {
-        const view = key;
-        return this.fromRaw(uint8FromBufLike$1(view.buffer));
-      } else if (key instanceof ArrayBuffer) {
-        return this.fromRaw(uint8FromBufLike$1(key));
-      } else if ("rawKey" in key && key.rawKey instanceof Uint8Array) {
-        return this.fromRaw(key.rawKey);
-      } else if ("derKey" in key) {
-        return this.fromDer(key.derKey);
-      } else if ("toDer" in key) {
-        return this.fromDer(key.toDer());
-      }
-    }
-    throw new Error("Cannot construct Ed25519PublicKey from the provided key.");
-  }
-  static fromRaw(rawKey) {
-    return new _Ed25519PublicKey(rawKey);
-  }
-  static fromDer(derKey) {
-    return new _Ed25519PublicKey(this.derDecode(derKey));
-  }
-  static derEncode(publicKey) {
-    const key = wrapDER(publicKey, ED25519_OID);
-    key.__derEncodedPublicKey__ = void 0;
-    return key;
-  }
-  static derDecode(key) {
-    const unwrapped = unwrapDER(key, ED25519_OID);
-    if (unwrapped.length !== this.RAW_KEY_LENGTH) {
-      throw new Error("An Ed25519 public key must be exactly 32bytes long");
-    }
-    return unwrapped;
-  }
-  get rawKey() {
-    return __privateGet(this, _rawKey);
-  }
-  get derKey() {
-    return __privateGet(this, _derKey);
-  }
-  toDer() {
-    return this.derKey;
-  }
-  toRaw() {
-    return this.rawKey;
-  }
-};
-_rawKey = new WeakMap();
-_derKey = new WeakMap();
-_Ed25519PublicKey.RAW_KEY_LENGTH = 32;
-let Ed25519PublicKey = _Ed25519PublicKey;
-const _Ed25519KeyIdentity = class _Ed25519KeyIdentity extends SignIdentity {
-  // `fromRaw` and `fromDer` should be used for instantiation, not this constructor.
-  constructor(publicKey, privateKey) {
-    super();
-    __privateAdd(this, _publicKey);
-    __privateAdd(this, _privateKey);
-    __privateSet(this, _publicKey, Ed25519PublicKey.from(publicKey));
-    __privateSet(this, _privateKey, privateKey);
-  }
-  /**
-   * Generate a new Ed25519KeyIdentity.
-   * @param seed a 32-byte seed for the private key. If not provided, a random seed will be generated.
-   * @returns Ed25519KeyIdentity
-   */
-  static generate(seed) {
-    if (seed && seed.length !== 32) {
-      throw new Error("Ed25519 Seed needs to be 32 bytes long.");
-    }
-    if (!seed)
-      seed = ed25519.utils.randomPrivateKey();
-    if (uint8Equals$1(seed, new Uint8Array(new Array(32).fill(0)))) {
-      console.warn("Seed is all zeros. This is not a secure seed. Please provide a seed with sufficient entropy if this is a production environment.");
-    }
-    const sk = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) {
-      sk[i] = seed[i];
-    }
-    const pk = ed25519.getPublicKey(sk);
-    return _Ed25519KeyIdentity.fromKeyPair(pk, sk);
-  }
-  static fromParsedJson(obj) {
-    const [publicKeyDer, privateKeyRaw] = obj;
-    return new _Ed25519KeyIdentity(Ed25519PublicKey.fromDer(hexToBytes(publicKeyDer)), hexToBytes(privateKeyRaw));
-  }
-  static fromJSON(json) {
-    const parsed = JSON.parse(json);
-    if (Array.isArray(parsed)) {
-      if (typeof parsed[0] === "string" && typeof parsed[1] === "string") {
-        return this.fromParsedJson([parsed[0], parsed[1]]);
-      } else {
-        throw new Error("Deserialization error: JSON must have at least 2 items.");
-      }
-    }
-    throw new Error(`Deserialization error: Invalid JSON type for string: ${JSON.stringify(json)}`);
-  }
-  static fromKeyPair(publicKey, privateKey) {
-    return new _Ed25519KeyIdentity(Ed25519PublicKey.fromRaw(publicKey), privateKey);
-  }
-  static fromSecretKey(secretKey) {
-    const publicKey = ed25519.getPublicKey(secretKey);
-    return _Ed25519KeyIdentity.fromKeyPair(publicKey, secretKey);
-  }
-  /**
-   * Serialize this key to JSON.
-   */
-  toJSON() {
-    return [bytesToHex(__privateGet(this, _publicKey).toDer()), bytesToHex(__privateGet(this, _privateKey))];
-  }
-  /**
-   * Return a copy of the key pair.
-   */
-  getKeyPair() {
-    return {
-      secretKey: __privateGet(this, _privateKey),
-      publicKey: __privateGet(this, _publicKey)
-    };
-  }
-  /**
-   * Return the public key.
-   */
-  getPublicKey() {
-    return __privateGet(this, _publicKey);
-  }
-  /**
-   * Signs a blob of data, with this identity's private key.
-   * @param challenge - challenge to sign with this identity's secretKey, producing a signature
-   */
-  async sign(challenge) {
-    const signature = ed25519.sign(challenge, __privateGet(this, _privateKey).slice(0, 32));
-    Object.defineProperty(signature, "__signature__", {
-      enumerable: false,
-      value: void 0
-    });
-    return signature;
-  }
-  /**
-   * Verify
-   * @param sig - signature to verify
-   * @param msg - message to verify
-   * @param pk - public key
-   * @returns - true if the signature is valid, false otherwise
-   */
-  static verify(sig, msg, pk) {
-    const [signature, message, publicKey] = [sig, msg, pk].map((x2) => {
-      if (typeof x2 === "string") {
-        x2 = hexToBytes(x2);
-      }
-      return uint8FromBufLike$1(x2);
-    });
-    return ed25519.verify(signature, message, publicKey);
-  }
-};
-_publicKey = new WeakMap();
-_privateKey = new WeakMap();
-let Ed25519KeyIdentity = _Ed25519KeyIdentity;
-class CryptoError extends Error {
-  constructor(message) {
-    super(message);
-    this.message = message;
-    Object.setPrototypeOf(this, CryptoError.prototype);
-  }
-}
-function _getEffectiveCrypto(subtleCrypto) {
-  if (typeof global !== "undefined" && global["crypto"] && global["crypto"]["subtle"]) {
-    return global["crypto"]["subtle"];
-  }
-  if (subtleCrypto) {
-    return subtleCrypto;
-  } else if (typeof crypto !== "undefined" && crypto["subtle"]) {
-    return crypto.subtle;
-  } else {
-    throw new CryptoError("Global crypto was not available and none was provided. Please inlcude a SubtleCrypto implementation. See https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto");
-  }
-}
-class ECDSAKeyIdentity extends SignIdentity {
-  /**
-   * Generates a randomly generated identity for use in calls to the Internet Computer.
-   * @param {CryptoKeyOptions} options optional settings
-   * @param {CryptoKeyOptions['extractable']} options.extractable - whether the key should allow itself to be used. Set to false for maximum security.
-   * @param {CryptoKeyOptions['keyUsages']} options.keyUsages - a list of key usages that the key can be used for
-   * @param {CryptoKeyOptions['subtleCrypto']} options.subtleCrypto interface
-   * @returns a {@link ECDSAKeyIdentity}
-   */
-  static async generate(options) {
-    const { extractable = false, keyUsages = ["sign", "verify"], subtleCrypto } = options ?? {};
-    const effectiveCrypto = _getEffectiveCrypto(subtleCrypto);
-    const keyPair = await effectiveCrypto.generateKey({
-      name: "ECDSA",
-      namedCurve: "P-256"
-    }, extractable, keyUsages);
-    const derKey = uint8FromBufLike$1(await effectiveCrypto.exportKey("spki", keyPair.publicKey));
-    Object.assign(derKey, {
-      __derEncodedPublicKey__: void 0
-    });
-    return new this(keyPair, derKey, effectiveCrypto);
-  }
-  /**
-   * generates an identity from a public and private key. Please ensure that you are generating these keys securely and protect the user's private key
-   * @param keyPair a CryptoKeyPair
-   * @param subtleCrypto - a SubtleCrypto interface in case one is not available globally
-   * @returns an {@link ECDSAKeyIdentity}
-   */
-  static async fromKeyPair(keyPair, subtleCrypto) {
-    const effectiveCrypto = _getEffectiveCrypto(subtleCrypto);
-    const derKey = uint8FromBufLike$1(await effectiveCrypto.exportKey("spki", keyPair.publicKey));
-    Object.assign(derKey, {
-      __derEncodedPublicKey__: void 0
-    });
-    return new ECDSAKeyIdentity(keyPair, derKey, effectiveCrypto);
-  }
-  // `fromKeyPair` and `generate` should be used for instantiation, not this constructor.
-  constructor(keyPair, derKey, subtleCrypto) {
-    super();
-    this._keyPair = keyPair;
-    this._derKey = derKey;
-    this._subtleCrypto = subtleCrypto;
-  }
-  /**
-   * Return the internally-used key pair.
-   * @returns a CryptoKeyPair
-   */
-  getKeyPair() {
-    return this._keyPair;
-  }
-  /**
-   * Return the public key.
-   * @returns an {@link PublicKey & DerCryptoKey}
-   */
-  getPublicKey() {
-    const derKey = this._derKey;
-    const key = Object.create(this._keyPair.publicKey);
-    key.toDer = function() {
-      return derKey;
-    };
-    return key;
-  }
-  /**
-   * Signs a blob of data, with this identity's private key.
-   * @param {Uint8Array} challenge - challenge to sign with this identity's secretKey, producing a signature
-   * @returns {Promise<Signature>} signature
-   */
-  async sign(challenge) {
-    const params = {
-      name: "ECDSA",
-      hash: { name: "SHA-256" }
-    };
-    const signature = uint8FromBufLike$1(await this._subtleCrypto.sign(params, this._keyPair.privateKey, challenge));
-    Object.assign(signature, {
-      __signature__: void 0
-    });
-    return signature;
-  }
-}
-class PartialIdentity {
-  constructor(inner) {
-    __privateAdd(this, _inner);
-    __privateSet(this, _inner, inner);
-  }
-  /**
-   * The raw public key of this identity.
-   */
-  get rawKey() {
-    return __privateGet(this, _inner).rawKey;
-  }
-  /**
-   * The DER-encoded public key of this identity.
-   */
-  get derKey() {
-    return __privateGet(this, _inner).derKey;
-  }
-  /**
-   * The DER-encoded public key of this identity.
-   */
-  toDer() {
-    return __privateGet(this, _inner).toDer();
-  }
-  /**
-   * The inner {@link PublicKey} used by this identity.
-   */
-  getPublicKey() {
-    return __privateGet(this, _inner);
-  }
-  /**
-   * The {@link Principal} of this identity.
-   */
-  getPrincipal() {
-    if (!__privateGet(this, _inner).rawKey) {
-      throw new Error("Cannot get principal from a public key without a raw key.");
-    }
-    return Principal.fromUint8Array(new Uint8Array(__privateGet(this, _inner).rawKey));
-  }
-  /**
-   * Required for the Identity interface, but cannot implemented for just a public key.
-   */
-  transformRequest() {
-    return Promise.reject("Not implemented. You are attempting to use a partial identity to sign calls, but this identity only has access to the public key.To sign calls, use a DelegationIdentity instead.");
-  }
-}
-_inner = new WeakMap();
-function safeBytesToHex(data) {
-  if (data instanceof Uint8Array) {
-    return bytesToHex(data);
-  }
-  return bytesToHex(new Uint8Array(data));
-}
-function _parseBlob(value) {
-  if (typeof value !== "string" || value.length < 64) {
-    throw new Error("Invalid public key.");
-  }
-  return hexToBytes(value);
-}
-class Delegation {
-  constructor(pubkey, expiration, targets) {
-    this.pubkey = pubkey;
-    this.expiration = expiration;
-    this.targets = targets;
-  }
-  toCborValue() {
-    return {
-      pubkey: this.pubkey,
-      expiration: this.expiration,
-      ...this.targets && {
-        targets: this.targets
-      }
-    };
-  }
-  toJSON() {
-    return {
-      expiration: this.expiration.toString(16),
-      pubkey: safeBytesToHex(this.pubkey),
-      ...this.targets && { targets: this.targets.map((p) => p.toHex()) }
-    };
-  }
-}
-async function _createSingleDelegation(from, to, expiration, targets) {
-  const delegation = new Delegation(
-    to.toDer(),
-    BigInt(+expiration) * BigInt(1e6),
-    // In nanoseconds.
-    targets
-  );
-  const challenge = new Uint8Array([
-    ...IC_REQUEST_AUTH_DELEGATION_DOMAIN_SEPARATOR,
-    ...new Uint8Array(requestIdOf({ ...delegation }))
-  ]);
-  const signature = await from.sign(challenge);
-  return {
-    delegation,
-    signature
-  };
-}
-class DelegationChain {
-  /**
-   * Create a delegation chain between two (or more) keys. By default, the expiration time
-   * will be very short (15 minutes).
-   *
-   * To build a chain of more than 2 identities, this function needs to be called multiple times,
-   * passing the previous delegation chain into the options argument. For example:
-   * @example
-   * const rootKey = createKey();
-   * const middleKey = createKey();
-   * const bottomeKey = createKey();
-   *
-   * const rootToMiddle = await DelegationChain.create(
-   *   root, middle.getPublicKey(), Date.parse('2100-01-01'),
-   * );
-   * const middleToBottom = await DelegationChain.create(
-   *   middle, bottom.getPublicKey(), Date.parse('2100-01-01'), { previous: rootToMiddle },
-   * );
-   *
-   * // We can now use a delegation identity that uses the delegation above:
-   * const identity = DelegationIdentity.fromDelegation(bottomKey, middleToBottom);
-   * @param from The identity that will delegate.
-   * @param to The identity that gets delegated. It can now sign messages as if it was the
-   *           identity above.
-   * @param expiration The length the delegation is valid. By default, 15 minutes from calling
-   *                   this function.
-   * @param options A set of options for this delegation. expiration and previous
-   * @param options.previous - Another DelegationChain that this chain should start with.
-   * @param options.targets - targets that scope the delegation (e.g. Canister Principals)
-   */
-  static async create(from, to, expiration = new Date(Date.now() + 15 * 60 * 1e3), options = {}) {
-    var _a2, _b2;
-    const delegation = await _createSingleDelegation(from, to, expiration, options.targets);
-    return new DelegationChain([...((_a2 = options.previous) == null ? void 0 : _a2.delegations) || [], delegation], ((_b2 = options.previous) == null ? void 0 : _b2.publicKey) || from.getPublicKey().toDer());
-  }
-  /**
-   * Creates a DelegationChain object from a JSON string.
-   * @param json The JSON string to parse.
-   */
-  static fromJSON(json) {
-    const { publicKey, delegations } = typeof json === "string" ? JSON.parse(json) : json;
-    if (!Array.isArray(delegations)) {
-      throw new Error("Invalid delegations.");
-    }
-    const parsedDelegations = delegations.map((signedDelegation) => {
-      const { delegation, signature } = signedDelegation;
-      const { pubkey, expiration, targets } = delegation;
-      if (targets !== void 0 && !Array.isArray(targets)) {
-        throw new Error("Invalid targets.");
-      }
-      return {
-        delegation: new Delegation(
-          _parseBlob(pubkey),
-          BigInt("0x" + expiration),
-          // expiration in JSON is an hexa string (See toJSON() below).
-          targets && targets.map((t) => {
-            if (typeof t !== "string") {
-              throw new Error("Invalid target.");
-            }
-            return Principal.fromHex(t);
-          })
-        ),
-        signature: _parseBlob(signature)
-      };
-    });
-    return new this(parsedDelegations, _parseBlob(publicKey));
-  }
-  /**
-   * Creates a DelegationChain object from a list of delegations and a DER-encoded public key.
-   * @param delegations The list of delegations.
-   * @param publicKey The DER-encoded public key of the key-pair signing the first delegation.
-   */
-  static fromDelegations(delegations, publicKey) {
-    return new this(delegations, publicKey);
-  }
-  constructor(delegations, publicKey) {
-    this.delegations = delegations;
-    this.publicKey = publicKey;
-  }
-  toJSON() {
-    return {
-      delegations: this.delegations.map((signedDelegation) => {
-        const { delegation, signature } = signedDelegation;
-        const { targets } = delegation;
-        return {
-          delegation: {
-            expiration: delegation.expiration.toString(16),
-            pubkey: safeBytesToHex(delegation.pubkey),
-            ...targets && {
-              targets: targets.map((t) => t.toHex())
-            }
-          },
-          signature: safeBytesToHex(signature)
-        };
-      }),
-      publicKey: safeBytesToHex(this.publicKey)
-    };
-  }
-}
-class DelegationIdentity extends SignIdentity {
-  /**
-   * Create a delegation without having access to delegateKey.
-   * @param key The key used to sign the requests.
-   * @param delegation A delegation object created using `createDelegation`.
-   */
-  static fromDelegation(key, delegation) {
-    return new this(key, delegation);
-  }
-  constructor(_inner2, _delegation2) {
-    super();
-    this._inner = _inner2;
-    this._delegation = _delegation2;
-  }
-  getDelegation() {
-    return this._delegation;
-  }
-  getPublicKey() {
-    return {
-      derKey: this._delegation.publicKey,
-      toDer: () => this._delegation.publicKey
-    };
-  }
-  sign(blob) {
-    return this._inner.sign(blob);
-  }
-  async transformRequest(request) {
-    const { body, ...fields } = request;
-    const requestId = await requestIdOf(body);
-    return {
-      ...fields,
-      body: {
-        content: body,
-        sender_sig: await this.sign(new Uint8Array([...IC_REQUEST_DOMAIN_SEPARATOR, ...new Uint8Array(requestId)])),
-        sender_delegation: this._delegation.delegations,
-        sender_pubkey: this._delegation.publicKey
-      }
-    };
-  }
-}
-const _PartialDelegationIdentity = class _PartialDelegationIdentity extends PartialIdentity {
-  constructor(inner, delegation) {
-    super(inner);
-    __privateAdd(this, _delegation);
-    __privateSet(this, _delegation, delegation);
-  }
-  /**
-   * The Delegation Chain of this identity.
-   */
-  get delegation() {
-    return __privateGet(this, _delegation);
-  }
-  /**
-   * Create a {@link PartialDelegationIdentity} from a {@link PublicKey} and a {@link DelegationChain}.
-   * @param key The {@link PublicKey} to delegate to.
-   * @param delegation a {@link DelegationChain} targeting the inner key.
-   */
-  static fromDelegation(key, delegation) {
-    return new _PartialDelegationIdentity(key, delegation);
-  }
-};
-_delegation = new WeakMap();
-let PartialDelegationIdentity = _PartialDelegationIdentity;
-function isDelegationValid(chain, checks) {
-  for (const { delegation } of chain.delegations) {
-    if (+new Date(Number(delegation.expiration / BigInt(1e6))) <= +Date.now()) {
-      return false;
-    }
-  }
-  const scopes = [];
-  for (const s of scopes) {
-    const scope = s.toText();
-    for (const { delegation } of chain.delegations) {
-      if (delegation.targets === void 0) {
-        continue;
-      }
-      let none = true;
-      for (const target of delegation.targets) {
-        if (target.toText() === scope) {
-          none = false;
-          break;
-        }
-      }
-      if (none) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-const events = ["mousedown", "mousemove", "keydown", "touchstart", "wheel"];
-class IdleManager {
-  /**
-   * @protected
-   * @param options {@link IdleManagerOptions}
-   */
-  constructor(options = {}) {
-    __publicField(this, "callbacks", []);
-    __publicField(this, "idleTimeout", 10 * 60 * 1e3);
-    __publicField(this, "timeoutID");
-    const { onIdle, idleTimeout = 10 * 60 * 1e3 } = options || {};
-    this.callbacks = onIdle ? [onIdle] : [];
-    this.idleTimeout = idleTimeout;
-    const _resetTimer = this._resetTimer.bind(this);
-    window.addEventListener("load", _resetTimer, true);
-    events.forEach(function(name) {
-      document.addEventListener(name, _resetTimer, true);
-    });
-    const debounce = (func, wait) => {
-      let timeout;
-      return (...args) => {
-        const context = this;
-        const later = function() {
-          timeout = void 0;
-          func.apply(context, args);
-        };
-        clearTimeout(timeout);
-        timeout = window.setTimeout(later, wait);
-      };
-    };
-    if (options == null ? void 0 : options.captureScroll) {
-      const scroll = debounce(_resetTimer, (options == null ? void 0 : options.scrollDebounce) ?? 100);
-      window.addEventListener("scroll", scroll, true);
-    }
-    _resetTimer();
-  }
-  /**
-   * Creates an {@link IdleManager}
-   * @param {IdleManagerOptions} options Optional configuration
-   * @see {@link IdleManagerOptions}
-   * @param options.onIdle Callback once user has been idle. Use to prompt for fresh login, and use `Actor.agentOf(your_actor).invalidateIdentity()` to protect the user
-   * @param options.idleTimeout timeout in ms
-   * @param options.captureScroll capture scroll events
-   * @param options.scrollDebounce scroll debounce time in ms
-   */
-  static create(options = {}) {
-    return new this(options);
-  }
-  /**
-   * @param {IdleCB} callback function to be called when user goes idle
-   */
-  registerCallback(callback) {
-    this.callbacks.push(callback);
-  }
-  /**
-   * Cleans up the idle manager and its listeners
-   */
-  exit() {
-    clearTimeout(this.timeoutID);
-    window.removeEventListener("load", this._resetTimer, true);
-    const _resetTimer = this._resetTimer.bind(this);
-    events.forEach(function(name) {
-      document.removeEventListener(name, _resetTimer, true);
-    });
-    this.callbacks.forEach((cb) => cb());
-  }
-  /**
-   * Resets the timeouts during cleanup
-   */
-  _resetTimer() {
-    const exit = this.exit.bind(this);
-    window.clearTimeout(this.timeoutID);
-    this.timeoutID = window.setTimeout(exit, this.idleTimeout);
-  }
-}
-const instanceOfAny = (object, constructors) => constructors.some((c) => object instanceof c);
-let idbProxyableTypes;
-let cursorAdvanceMethods;
-function getIdbProxyableTypes() {
-  return idbProxyableTypes || (idbProxyableTypes = [
-    IDBDatabase,
-    IDBObjectStore,
-    IDBIndex,
-    IDBCursor,
-    IDBTransaction
-  ]);
-}
-function getCursorAdvanceMethods() {
-  return cursorAdvanceMethods || (cursorAdvanceMethods = [
-    IDBCursor.prototype.advance,
-    IDBCursor.prototype.continue,
-    IDBCursor.prototype.continuePrimaryKey
-  ]);
-}
-const cursorRequestMap = /* @__PURE__ */ new WeakMap();
-const transactionDoneMap = /* @__PURE__ */ new WeakMap();
-const transactionStoreNamesMap = /* @__PURE__ */ new WeakMap();
-const transformCache = /* @__PURE__ */ new WeakMap();
-const reverseTransformCache = /* @__PURE__ */ new WeakMap();
-function promisifyRequest(request) {
-  const promise = new Promise((resolve, reject) => {
-    const unlisten = () => {
-      request.removeEventListener("success", success);
-      request.removeEventListener("error", error);
-    };
-    const success = () => {
-      resolve(wrap(request.result));
-      unlisten();
-    };
-    const error = () => {
-      reject(request.error);
-      unlisten();
-    };
-    request.addEventListener("success", success);
-    request.addEventListener("error", error);
-  });
-  promise.then((value) => {
-    if (value instanceof IDBCursor) {
-      cursorRequestMap.set(value, request);
-    }
-  }).catch(() => {
-  });
-  reverseTransformCache.set(promise, request);
-  return promise;
-}
-function cacheDonePromiseForTransaction(tx) {
-  if (transactionDoneMap.has(tx))
-    return;
-  const done = new Promise((resolve, reject) => {
-    const unlisten = () => {
-      tx.removeEventListener("complete", complete);
-      tx.removeEventListener("error", error);
-      tx.removeEventListener("abort", error);
-    };
-    const complete = () => {
-      resolve();
-      unlisten();
-    };
-    const error = () => {
-      reject(tx.error || new DOMException("AbortError", "AbortError"));
-      unlisten();
-    };
-    tx.addEventListener("complete", complete);
-    tx.addEventListener("error", error);
-    tx.addEventListener("abort", error);
-  });
-  transactionDoneMap.set(tx, done);
-}
-let idbProxyTraps = {
-  get(target, prop, receiver) {
-    if (target instanceof IDBTransaction) {
-      if (prop === "done")
-        return transactionDoneMap.get(target);
-      if (prop === "objectStoreNames") {
-        return target.objectStoreNames || transactionStoreNamesMap.get(target);
-      }
-      if (prop === "store") {
-        return receiver.objectStoreNames[1] ? void 0 : receiver.objectStore(receiver.objectStoreNames[0]);
-      }
-    }
-    return wrap(target[prop]);
-  },
-  set(target, prop, value) {
-    target[prop] = value;
-    return true;
-  },
-  has(target, prop) {
-    if (target instanceof IDBTransaction && (prop === "done" || prop === "store")) {
-      return true;
-    }
-    return prop in target;
-  }
-};
-function replaceTraps(callback) {
-  idbProxyTraps = callback(idbProxyTraps);
-}
-function wrapFunction(func) {
-  if (func === IDBDatabase.prototype.transaction && !("objectStoreNames" in IDBTransaction.prototype)) {
-    return function(storeNames, ...args) {
-      const tx = func.call(unwrap(this), storeNames, ...args);
-      transactionStoreNamesMap.set(tx, storeNames.sort ? storeNames.sort() : [storeNames]);
-      return wrap(tx);
-    };
-  }
-  if (getCursorAdvanceMethods().includes(func)) {
-    return function(...args) {
-      func.apply(unwrap(this), args);
-      return wrap(cursorRequestMap.get(this));
-    };
-  }
-  return function(...args) {
-    return wrap(func.apply(unwrap(this), args));
-  };
-}
-function transformCachableValue(value) {
-  if (typeof value === "function")
-    return wrapFunction(value);
-  if (value instanceof IDBTransaction)
-    cacheDonePromiseForTransaction(value);
-  if (instanceOfAny(value, getIdbProxyableTypes()))
-    return new Proxy(value, idbProxyTraps);
-  return value;
-}
-function wrap(value) {
-  if (value instanceof IDBRequest)
-    return promisifyRequest(value);
-  if (transformCache.has(value))
-    return transformCache.get(value);
-  const newValue = transformCachableValue(value);
-  if (newValue !== value) {
-    transformCache.set(value, newValue);
-    reverseTransformCache.set(newValue, value);
-  }
-  return newValue;
-}
-const unwrap = (value) => reverseTransformCache.get(value);
-function openDB(name, version, { blocked, upgrade, blocking, terminated } = {}) {
-  const request = indexedDB.open(name, version);
-  const openPromise = wrap(request);
-  if (upgrade) {
-    request.addEventListener("upgradeneeded", (event) => {
-      upgrade(wrap(request.result), event.oldVersion, event.newVersion, wrap(request.transaction), event);
-    });
-  }
-  if (blocked) {
-    request.addEventListener("blocked", (event) => blocked(
-      // Casting due to https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1405
-      event.oldVersion,
-      event.newVersion,
-      event
-    ));
-  }
-  openPromise.then((db) => {
-    if (terminated)
-      db.addEventListener("close", () => terminated());
-    if (blocking) {
-      db.addEventListener("versionchange", (event) => blocking(event.oldVersion, event.newVersion, event));
-    }
-  }).catch(() => {
-  });
-  return openPromise;
-}
-const readMethods = ["get", "getKey", "getAll", "getAllKeys", "count"];
-const writeMethods = ["put", "add", "delete", "clear"];
-const cachedMethods = /* @__PURE__ */ new Map();
-function getMethod(target, prop) {
-  if (!(target instanceof IDBDatabase && !(prop in target) && typeof prop === "string")) {
-    return;
-  }
-  if (cachedMethods.get(prop))
-    return cachedMethods.get(prop);
-  const targetFuncName = prop.replace(/FromIndex$/, "");
-  const useIndex = prop !== targetFuncName;
-  const isWrite = writeMethods.includes(targetFuncName);
-  if (
-    // Bail if the target doesn't exist on the target. Eg, getAll isn't in Edge.
-    !(targetFuncName in (useIndex ? IDBIndex : IDBObjectStore).prototype) || !(isWrite || readMethods.includes(targetFuncName))
-  ) {
-    return;
-  }
-  const method = async function(storeName, ...args) {
-    const tx = this.transaction(storeName, isWrite ? "readwrite" : "readonly");
-    let target2 = tx.store;
-    if (useIndex)
-      target2 = target2.index(args.shift());
-    return (await Promise.all([
-      target2[targetFuncName](...args),
-      isWrite && tx.done
-    ]))[0];
-  };
-  cachedMethods.set(prop, method);
-  return method;
-}
-replaceTraps((oldTraps) => ({
-  ...oldTraps,
-  get: (target, prop, receiver) => getMethod(target, prop) || oldTraps.get(target, prop, receiver),
-  has: (target, prop) => !!getMethod(target, prop) || oldTraps.has(target, prop)
-}));
-const AUTH_DB_NAME = "auth-client-db";
-const OBJECT_STORE_NAME = "ic-keyval";
-const _openDbStore = async (dbName = AUTH_DB_NAME, storeName = OBJECT_STORE_NAME, version) => {
-  if (isBrowser && (localStorage == null ? void 0 : localStorage.getItem(KEY_STORAGE_DELEGATION))) {
-    localStorage.removeItem(KEY_STORAGE_DELEGATION);
-    localStorage.removeItem(KEY_STORAGE_KEY);
-  }
-  return await openDB(dbName, version, {
-    upgrade: (database) => {
-      if (database.objectStoreNames.contains(storeName)) {
-        database.clear(storeName);
-      }
-      database.createObjectStore(storeName);
-    }
-  });
-};
-async function _getValue(db, storeName, key) {
-  return await db.get(storeName, key);
-}
-async function _setValue(db, storeName, key, value) {
-  return await db.put(storeName, value, key);
-}
-async function _removeValue(db, storeName, key) {
-  return await db.delete(storeName, key);
-}
-class IdbKeyVal {
-  // Do not use - instead prefer create
-  constructor(_db, _storeName) {
-    __publicField(this, "_db");
-    __publicField(this, "_storeName");
-    this._db = _db;
-    this._storeName = _storeName;
-  }
-  /**
-   * @param {DBCreateOptions} options - DBCreateOptions
-   * @param {DBCreateOptions['dbName']} options.dbName name for the indexeddb database
-   * @default
-   * @param {DBCreateOptions['storeName']} options.storeName name for the indexeddb Data Store
-   * @default
-   * @param {DBCreateOptions['version']} options.version version of the database. Increment to safely upgrade
-   */
-  static async create(options) {
-    const { dbName = AUTH_DB_NAME, storeName = OBJECT_STORE_NAME, version = DB_VERSION } = options ?? {};
-    const db = await _openDbStore(dbName, storeName, version);
-    return new IdbKeyVal(db, storeName);
-  }
-  /**
-   * Basic setter
-   * @param {IDBValidKey} key string | number | Date | BufferSource | IDBValidKey[]
-   * @param value value to set
-   * @returns void
-   */
-  async set(key, value) {
-    return await _setValue(this._db, this._storeName, key, value);
-  }
-  /**
-   * Basic getter
-   * Pass in a type T for type safety if you know the type the value will have if it is found
-   * @param {IDBValidKey} key string | number | Date | BufferSource | IDBValidKey[]
-   * @returns `Promise<T | null>`
-   * @example
-   * await get<string>('exampleKey') -> 'exampleValue'
-   */
-  async get(key) {
-    return await _getValue(this._db, this._storeName, key) ?? null;
-  }
-  /**
-   * Remove a key
-   * @param key {@link IDBValidKey}
-   * @returns void
-   */
-  async remove(key) {
-    return await _removeValue(this._db, this._storeName, key);
-  }
-}
-const KEY_STORAGE_KEY = "identity";
-const KEY_STORAGE_DELEGATION = "delegation";
-const KEY_VECTOR = "iv";
-const DB_VERSION = 1;
-const isBrowser = typeof window !== "undefined";
-class LocalStorage {
-  constructor(prefix2 = "ic-", _localStorage) {
-    __publicField(this, "prefix");
-    __publicField(this, "_localStorage");
-    this.prefix = prefix2;
-    this._localStorage = _localStorage;
-  }
-  get(key) {
-    return Promise.resolve(this._getLocalStorage().getItem(this.prefix + key));
-  }
-  set(key, value) {
-    this._getLocalStorage().setItem(this.prefix + key, value);
-    return Promise.resolve();
-  }
-  remove(key) {
-    this._getLocalStorage().removeItem(this.prefix + key);
-    return Promise.resolve();
-  }
-  _getLocalStorage() {
-    if (this._localStorage) {
-      return this._localStorage;
-    }
-    const ls = typeof window === "undefined" ? typeof global === "undefined" ? typeof self === "undefined" ? void 0 : self.localStorage : global.localStorage : window.localStorage;
-    if (!ls) {
-      throw new Error("Could not find local storage.");
-    }
-    return ls;
-  }
-}
-class IdbStorage {
-  /**
-   * @param options - DBCreateOptions
-   * @param options.dbName - name for the indexeddb database
-   * @param options.storeName - name for the indexeddb Data Store
-   * @param options.version - version of the database. Increment to safely upgrade
-   * @example
-   * ```ts
-   * const storage = new IdbStorage({ dbName: 'my-db', storeName: 'my-store', version: 2 });
-   * ```
-   */
-  constructor(options) {
-    __privateAdd(this, _options);
-    // Initializes a KeyVal on first request
-    __publicField(this, "initializedDb");
-    __privateSet(this, _options, options ?? {});
-  }
-  get _db() {
-    return new Promise((resolve, reject) => {
-      if (this.initializedDb) {
-        resolve(this.initializedDb);
-        return;
-      }
-      IdbKeyVal.create(__privateGet(this, _options)).then((db) => {
-        this.initializedDb = db;
-        resolve(db);
-      }).catch(reject);
-    });
-  }
-  async get(key) {
-    const db = await this._db;
-    return await db.get(key);
-  }
-  async set(key, value) {
-    const db = await this._db;
-    await db.set(key, value);
-  }
-  async remove(key) {
-    const db = await this._db;
-    await db.remove(key);
-  }
-}
-_options = new WeakMap();
-const NANOSECONDS_PER_SECOND = BigInt(1e9);
-const SECONDS_PER_HOUR = BigInt(3600);
-const NANOSECONDS_PER_HOUR = NANOSECONDS_PER_SECOND * SECONDS_PER_HOUR;
-const IDENTITY_PROVIDER_DEFAULT = "https://identity.internetcomputer.org";
-const IDENTITY_PROVIDER_ENDPOINT = "#authorize";
-const DEFAULT_MAX_TIME_TO_LIVE = BigInt(8) * NANOSECONDS_PER_HOUR;
-const ECDSA_KEY_LABEL = "ECDSA";
-const ED25519_KEY_LABEL = "Ed25519";
-const INTERRUPT_CHECK_INTERVAL = 500;
-const ERROR_USER_INTERRUPT = "UserInterrupt";
-class AuthClient {
-  constructor(_identity, _key, _chain, _storage, idleManager, _createOptions, _idpWindow, _eventHandler) {
-    __publicField(this, "_identity");
-    __publicField(this, "_key");
-    __publicField(this, "_chain");
-    __publicField(this, "_storage");
-    __publicField(this, "idleManager");
-    __publicField(this, "_createOptions");
-    __publicField(this, "_idpWindow");
-    __publicField(this, "_eventHandler");
-    this._identity = _identity;
-    this._key = _key;
-    this._chain = _chain;
-    this._storage = _storage;
-    this.idleManager = idleManager;
-    this._createOptions = _createOptions;
-    this._idpWindow = _idpWindow;
-    this._eventHandler = _eventHandler;
-    this._registerDefaultIdleCallback();
-  }
-  /**
-   * Create an AuthClient to manage authentication and identity
-   * @param {AuthClientCreateOptions} options - Options for creating an {@link AuthClient}
-   * @see {@link AuthClientCreateOptions}
-   * @param options.identity Optional Identity to use as the base
-   * @see {@link SignIdentity}
-   * @param options.storage Storage mechanism for delegation credentials
-   * @see {@link AuthClientStorage}
-   * @param options.keyType Type of key to use for the base key
-   * @param {IdleOptions} options.idleOptions Configures an {@link IdleManager}
-   * @see {@link IdleOptions}
-   * Default behavior is to clear stored identity and reload the page when a user goes idle, unless you set the disableDefaultIdleCallback flag or pass in a custom idle callback.
-   * @example
-   * const authClient = await AuthClient.create({
-   *   idleOptions: {
-   *     disableIdle: true
-   *   }
-   * })
-   */
-  static async create(options = {}) {
-    var _a2;
-    const storage = options.storage ?? new IdbStorage();
-    const keyType = options.keyType ?? ECDSA_KEY_LABEL;
-    let key = null;
-    if (options.identity) {
-      key = options.identity;
-    } else {
-      let maybeIdentityStorage = await storage.get(KEY_STORAGE_KEY);
-      if (!maybeIdentityStorage && isBrowser) {
-        try {
-          const fallbackLocalStorage = new LocalStorage();
-          const localChain = await fallbackLocalStorage.get(KEY_STORAGE_DELEGATION);
-          const localKey = await fallbackLocalStorage.get(KEY_STORAGE_KEY);
-          if (localChain && localKey && keyType === ECDSA_KEY_LABEL) {
-            console.log("Discovered an identity stored in localstorage. Migrating to IndexedDB");
-            await storage.set(KEY_STORAGE_DELEGATION, localChain);
-            await storage.set(KEY_STORAGE_KEY, localKey);
-            maybeIdentityStorage = localChain;
-            await fallbackLocalStorage.remove(KEY_STORAGE_DELEGATION);
-            await fallbackLocalStorage.remove(KEY_STORAGE_KEY);
-          }
-        } catch (error) {
-          console.error("error while attempting to recover localstorage: " + error);
-        }
-      }
-      if (maybeIdentityStorage) {
-        try {
-          if (typeof maybeIdentityStorage === "object") {
-            if (keyType === ED25519_KEY_LABEL && typeof maybeIdentityStorage === "string") {
-              key = Ed25519KeyIdentity.fromJSON(maybeIdentityStorage);
-            } else {
-              key = await ECDSAKeyIdentity.fromKeyPair(maybeIdentityStorage);
-            }
-          } else if (typeof maybeIdentityStorage === "string") {
-            key = Ed25519KeyIdentity.fromJSON(maybeIdentityStorage);
-          }
-        } catch {
-        }
-      }
-    }
-    let identity = new AnonymousIdentity();
-    let chain = null;
-    if (key) {
-      try {
-        const chainStorage = await storage.get(KEY_STORAGE_DELEGATION);
-        if (typeof chainStorage === "object" && chainStorage !== null) {
-          throw new Error("Delegation chain is incorrectly stored. A delegation chain should be stored as a string.");
-        }
-        if (options.identity) {
-          identity = options.identity;
-        } else if (chainStorage) {
-          chain = DelegationChain.fromJSON(chainStorage);
-          if (!isDelegationValid(chain)) {
-            await _deleteStorage(storage);
-            key = null;
-          } else {
-            if ("toDer" in key) {
-              identity = PartialDelegationIdentity.fromDelegation(key, chain);
-            } else {
-              identity = DelegationIdentity.fromDelegation(key, chain);
-            }
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        await _deleteStorage(storage);
-        key = null;
-      }
-    }
-    let idleManager;
-    if ((_a2 = options.idleOptions) == null ? void 0 : _a2.disableIdle) {
-      idleManager = void 0;
-    } else if (chain || options.identity) {
-      idleManager = IdleManager.create(options.idleOptions);
-    }
-    if (!key) {
-      if (keyType === ED25519_KEY_LABEL) {
-        key = Ed25519KeyIdentity.generate();
-        await storage.set(KEY_STORAGE_KEY, JSON.stringify(key.toJSON()));
-      } else {
-        if (options.storage && keyType === ECDSA_KEY_LABEL) {
-          console.warn(`You are using a custom storage provider that may not support CryptoKey storage. If you are using a custom storage provider that does not support CryptoKey storage, you should use '${ED25519_KEY_LABEL}' as the key type, as it can serialize to a string`);
-        }
-        key = await ECDSAKeyIdentity.generate();
-        await storage.set(KEY_STORAGE_KEY, key.getKeyPair());
-      }
-    }
-    return new this(identity, key, chain, storage, idleManager, options);
-  }
-  _registerDefaultIdleCallback() {
-    var _a2, _b2;
-    const idleOptions = (_a2 = this._createOptions) == null ? void 0 : _a2.idleOptions;
-    if (!(idleOptions == null ? void 0 : idleOptions.onIdle) && !(idleOptions == null ? void 0 : idleOptions.disableDefaultIdleCallback)) {
-      (_b2 = this.idleManager) == null ? void 0 : _b2.registerCallback(() => {
-        this.logout();
-        location.reload();
-      });
-    }
-  }
-  async _handleSuccess(message, onSuccess) {
-    var _a2, _b2;
-    const delegations = message.delegations.map((signedDelegation) => {
-      return {
-        delegation: new Delegation(signedDelegation.delegation.pubkey, signedDelegation.delegation.expiration, signedDelegation.delegation.targets),
-        signature: signedDelegation.signature
-      };
-    });
-    const delegationChain = DelegationChain.fromDelegations(delegations, message.userPublicKey);
-    const key = this._key;
-    if (!key) {
-      return;
-    }
-    this._chain = delegationChain;
-    if ("toDer" in key) {
-      this._identity = PartialDelegationIdentity.fromDelegation(key, this._chain);
-    } else {
-      this._identity = DelegationIdentity.fromDelegation(key, this._chain);
-    }
-    (_a2 = this._idpWindow) == null ? void 0 : _a2.close();
-    const idleOptions = (_b2 = this._createOptions) == null ? void 0 : _b2.idleOptions;
-    if (!this.idleManager && !(idleOptions == null ? void 0 : idleOptions.disableIdle)) {
-      this.idleManager = IdleManager.create(idleOptions);
-      this._registerDefaultIdleCallback();
-    }
-    this._removeEventListener();
-    delete this._idpWindow;
-    if (this._chain) {
-      await this._storage.set(KEY_STORAGE_DELEGATION, JSON.stringify(this._chain.toJSON()));
-    }
-    onSuccess == null ? void 0 : onSuccess(message);
-  }
-  getIdentity() {
-    return this._identity;
-  }
-  async isAuthenticated() {
-    return !this.getIdentity().getPrincipal().isAnonymous() && this._chain !== null && isDelegationValid(this._chain);
-  }
-  /**
-   * AuthClient Login - Opens up a new window to authenticate with Internet Identity
-   * @param {AuthClientLoginOptions} options - Options for logging in, merged with the options set during creation if any. Note: we only perform a shallow merge for the `customValues` property.
-   * @param options.identityProvider Identity provider
-   * @param options.maxTimeToLive Expiration of the authentication in nanoseconds
-   * @param options.allowPinAuthentication If present, indicates whether or not the Identity Provider should allow the user to authenticate and/or register using a temporary key/PIN identity. Authenticating dapps may want to prevent users from using Temporary keys/PIN identities because Temporary keys/PIN identities are less secure than Passkeys (webauthn credentials) and because Temporary keys/PIN identities generally only live in a browser database (which may get cleared by the browser/OS).
-   * @param options.derivationOrigin Origin for Identity Provider to use while generating the delegated identity
-   * @param options.windowOpenerFeatures Configures the opened authentication window
-   * @param options.onSuccess Callback once login has completed
-   * @param options.onError Callback in case authentication fails
-   * @param options.customValues Extra values to be passed in the login request during the authorize-ready phase. Note: we only perform a shallow merge for the `customValues` property.
-   * @example
-   * const authClient = await AuthClient.create();
-   * authClient.login({
-   *  identityProvider: 'http://<canisterID>.127.0.0.1:8000',
-   *  maxTimeToLive: BigInt (7) * BigInt(24) * BigInt(3_600_000_000_000), // 1 week
-   *  windowOpenerFeatures: "toolbar=0,location=0,menubar=0,width=500,height=500,left=100,top=100",
-   *  onSuccess: () => {
-   *    console.log('Login Successful!');
-   *  },
-   *  onError: (error) => {
-   *    console.error('Login Failed: ', error);
-   *  }
-   * });
-   */
-  async login(options) {
-    var _a2, _b2, _c2;
-    const loginOptions = mergeLoginOptions((_a2 = this._createOptions) == null ? void 0 : _a2.loginOptions, options);
-    const maxTimeToLive = (loginOptions == null ? void 0 : loginOptions.maxTimeToLive) ?? DEFAULT_MAX_TIME_TO_LIVE;
-    const identityProviderUrl = new URL(((_b2 = loginOptions == null ? void 0 : loginOptions.identityProvider) == null ? void 0 : _b2.toString()) || IDENTITY_PROVIDER_DEFAULT);
-    identityProviderUrl.hash = IDENTITY_PROVIDER_ENDPOINT;
-    (_c2 = this._idpWindow) == null ? void 0 : _c2.close();
-    this._removeEventListener();
-    this._eventHandler = this._getEventHandler(identityProviderUrl, {
-      maxTimeToLive,
-      ...loginOptions
-    });
-    window.addEventListener("message", this._eventHandler);
-    this._idpWindow = window.open(identityProviderUrl.toString(), "idpWindow", loginOptions == null ? void 0 : loginOptions.windowOpenerFeatures) ?? void 0;
-    const checkInterruption = () => {
-      if (this._idpWindow) {
-        if (this._idpWindow.closed) {
-          this._handleFailure(ERROR_USER_INTERRUPT, loginOptions == null ? void 0 : loginOptions.onError);
-        } else {
-          setTimeout(checkInterruption, INTERRUPT_CHECK_INTERVAL);
-        }
-      }
-    };
-    checkInterruption();
-  }
-  _getEventHandler(identityProviderUrl, options) {
-    return async (event) => {
-      var _a2, _b2, _c2;
-      if (event.origin !== identityProviderUrl.origin) {
-        return;
-      }
-      const message = event.data;
-      switch (message.kind) {
-        case "authorize-ready": {
-          const request = {
-            kind: "authorize-client",
-            sessionPublicKey: new Uint8Array((_a2 = this._key) == null ? void 0 : _a2.getPublicKey().toDer()),
-            maxTimeToLive: options == null ? void 0 : options.maxTimeToLive,
-            allowPinAuthentication: options == null ? void 0 : options.allowPinAuthentication,
-            derivationOrigin: (_b2 = options == null ? void 0 : options.derivationOrigin) == null ? void 0 : _b2.toString(),
-            // Pass any custom values to the IDP.
-            ...options == null ? void 0 : options.customValues
-          };
-          (_c2 = this._idpWindow) == null ? void 0 : _c2.postMessage(request, identityProviderUrl.origin);
-          break;
-        }
-        case "authorize-client-success":
-          try {
-            await this._handleSuccess(message, options == null ? void 0 : options.onSuccess);
-          } catch (err) {
-            this._handleFailure(err.message, options == null ? void 0 : options.onError);
-          }
-          break;
-        case "authorize-client-failure":
-          this._handleFailure(message.text, options == null ? void 0 : options.onError);
-          break;
-      }
-    };
-  }
-  _handleFailure(errorMessage, onError) {
-    var _a2;
-    (_a2 = this._idpWindow) == null ? void 0 : _a2.close();
-    onError == null ? void 0 : onError(errorMessage);
-    this._removeEventListener();
-    delete this._idpWindow;
-  }
-  _removeEventListener() {
-    if (this._eventHandler) {
-      window.removeEventListener("message", this._eventHandler);
-    }
-    this._eventHandler = void 0;
-  }
-  async logout(options = {}) {
-    await _deleteStorage(this._storage);
-    this._identity = new AnonymousIdentity();
-    this._chain = null;
-    if (options.returnTo) {
-      try {
-        window.history.pushState({}, "", options.returnTo);
-      } catch {
-        window.location.href = options.returnTo;
-      }
-    }
-  }
-}
-async function _deleteStorage(storage) {
-  await storage.remove(KEY_STORAGE_KEY);
-  await storage.remove(KEY_STORAGE_DELEGATION);
-  await storage.remove(KEY_VECTOR);
-}
-function mergeLoginOptions(loginOptions, otherLoginOptions) {
-  if (!loginOptions && !otherLoginOptions) {
-    return void 0;
-  }
-  const customValues = (loginOptions == null ? void 0 : loginOptions.customValues) || (otherLoginOptions == null ? void 0 : otherLoginOptions.customValues) ? {
-    ...loginOptions == null ? void 0 : loginOptions.customValues,
-    ...otherLoginOptions == null ? void 0 : otherLoginOptions.customValues
-  } : void 0;
-  return {
-    ...loginOptions,
-    ...otherLoginOptions,
-    customValues
-  };
-}
-Service({});
-new TextEncoder().encode("icfs-chunk/");
-new TextEncoder().encode(
-  "icfs-metadata/"
-);
-new TextEncoder().encode("ynode/");
-var define_process_env_default = {};
-const DEFAULT_STORAGE_GATEWAY_URL = "https://blob.caffeine.ai";
-const DEFAULT_BUCKET_NAME = "default-bucket";
-const DEFAULT_PROJECT_ID = "0000000-0000-0000-0000-00000000000";
-let configCache = null;
-async function loadConfig() {
-  if (configCache) {
-    return configCache;
-  }
-  const backendCanisterId = define_process_env_default.CANISTER_ID_BACKEND;
-  const envBaseUrl = define_process_env_default.BASE_URL || "/";
-  const baseUrl = envBaseUrl.endsWith("/") ? envBaseUrl : `${envBaseUrl}/`;
-  try {
-    const response = await fetch(`${baseUrl}env.json`);
-    const config = await response.json();
-    if (!backendCanisterId && config.backend_canister_id === "undefined") {
-      console.error("CANISTER_ID_BACKEND is not set");
-      throw new Error("CANISTER_ID_BACKEND is not set");
-    }
-    const fullConfig = {
-      backend_host: config.backend_host === "undefined" ? void 0 : config.backend_host,
-      backend_canister_id: config.backend_canister_id === "undefined" ? backendCanisterId : config.backend_canister_id,
-      storage_gateway_url: "https://blob.caffeine.ai",
-      bucket_name: DEFAULT_BUCKET_NAME,
-      project_id: config.project_id !== "undefined" ? config.project_id : DEFAULT_PROJECT_ID,
-      ii_derivation_origin: config.ii_derivation_origin === "undefined" ? void 0 : config.ii_derivation_origin
-    };
-    configCache = fullConfig;
-    return fullConfig;
-  } catch {
-    if (!backendCanisterId) {
-      console.error("CANISTER_ID_BACKEND is not set");
-      throw new Error("CANISTER_ID_BACKEND is not set");
-    }
-    const fallbackConfig = {
-      backend_host: void 0,
-      backend_canister_id: backendCanisterId,
-      storage_gateway_url: DEFAULT_STORAGE_GATEWAY_URL,
-      bucket_name: DEFAULT_BUCKET_NAME,
-      project_id: DEFAULT_PROJECT_ID,
-      ii_derivation_origin: void 0
-    };
-    return fallbackConfig;
-  }
-}
-const ONE_HOUR_IN_NANOSECONDS = BigInt(36e11);
-const DEFAULT_IDENTITY_PROVIDER = "https://identity.internetcomputer.org/";
-const InternetIdentityReactContext = reactExports.createContext(
-  void 0
-);
-async function createAuthClient(createOptions) {
-  const config = await loadConfig();
-  const options = {
-    idleOptions: {
-      // Default behaviour of this hook is not to logout and reload window on identity expiration
-      disableDefaultIdleCallback: true,
-      disableIdle: true,
-      ...createOptions == null ? void 0 : createOptions.idleOptions
-    },
-    loginOptions: {
-      derivationOrigin: config.ii_derivation_origin
-    },
-    ...createOptions
-  };
-  const authClient = await AuthClient.create(options);
-  return authClient;
-}
-function InternetIdentityProvider({
-  children,
-  createOptions
-}) {
-  const [authClient, setAuthClient] = reactExports.useState(
-    void 0
-  );
-  const [identity, setIdentity] = reactExports.useState(void 0);
-  const [loginStatus, setStatus] = reactExports.useState("initializing");
-  const [loginError, setError] = reactExports.useState(void 0);
-  const setErrorMessage = reactExports.useCallback((message) => {
-    setStatus("loginError");
-    setError(new Error(message));
-  }, []);
-  const handleLoginSuccess = reactExports.useCallback(() => {
-    const latestIdentity = authClient == null ? void 0 : authClient.getIdentity();
-    if (!latestIdentity) {
-      setErrorMessage("Identity not found after successful login");
-      return;
-    }
-    setIdentity(latestIdentity);
-    setStatus("success");
-  }, [authClient, setErrorMessage]);
-  const handleLoginError = reactExports.useCallback(
-    (maybeError) => {
-      setErrorMessage(maybeError ?? "Login failed");
-    },
-    [setErrorMessage]
-  );
-  const login = reactExports.useCallback(() => {
-    if (!authClient) {
-      setErrorMessage(
-        "AuthClient is not initialized yet, make sure to call `login` on user interaction e.g. click."
-      );
-      return;
-    }
-    const currentIdentity = authClient.getIdentity();
-    if (!currentIdentity.getPrincipal().isAnonymous() && currentIdentity instanceof DelegationIdentity && isDelegationValid(currentIdentity.getDelegation())) {
-      setErrorMessage("User is already authenticated");
-      return;
-    }
-    const options = {
-      identityProvider: DEFAULT_IDENTITY_PROVIDER,
-      onSuccess: handleLoginSuccess,
-      onError: handleLoginError,
-      maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30)
-      // 30 days
-    };
-    setStatus("logging-in");
-    void authClient.login(options);
-  }, [authClient, handleLoginError, handleLoginSuccess, setErrorMessage]);
-  const clear = reactExports.useCallback(() => {
-    if (!authClient) {
-      setErrorMessage("Auth client not initialized");
-      return;
-    }
-    void authClient.logout().then(() => {
-      setIdentity(void 0);
-      setAuthClient(void 0);
-      setStatus("idle");
-      setError(void 0);
-    }).catch((unknownError) => {
-      setStatus("loginError");
-      setError(
-        unknownError instanceof Error ? unknownError : new Error("Logout failed")
-      );
-    });
-  }, [authClient, setErrorMessage]);
-  reactExports.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        setStatus("initializing");
-        let existingClient = authClient;
-        if (!existingClient) {
-          existingClient = await createAuthClient(createOptions);
-          if (cancelled) return;
-          setAuthClient(existingClient);
-        }
-        const isAuthenticated = await existingClient.isAuthenticated();
-        if (cancelled) return;
-        if (isAuthenticated) {
-          const loadedIdentity = existingClient.getIdentity();
-          setIdentity(loadedIdentity);
-        }
-      } catch (unknownError) {
-        setStatus("loginError");
-        setError(
-          unknownError instanceof Error ? unknownError : new Error("Initialization failed")
-        );
-      } finally {
-        if (!cancelled) setStatus("idle");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [createOptions, authClient]);
-  const value = reactExports.useMemo(
-    () => ({
-      identity,
-      login,
-      clear,
-      loginStatus,
-      isInitializing: loginStatus === "initializing",
-      isLoginIdle: loginStatus === "idle",
-      isLoggingIn: loginStatus === "logging-in",
-      isLoginSuccess: loginStatus === "success",
-      isLoginError: loginStatus === "loginError",
-      loginError
-    }),
-    [identity, login, clear, loginStatus, loginError]
-  );
-  return reactExports.createElement(InternetIdentityReactContext.Provider, {
-    value,
-    children
-  });
-}
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 const queryClient = new QueryClient();
 ReactDOM.createRoot(document.getElementById("root")).render(
-  /* @__PURE__ */ jsxRuntimeExports.jsx(QueryClientProvider, { client: queryClient, children: /* @__PURE__ */ jsxRuntimeExports.jsx(InternetIdentityProvider, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
+  /* @__PURE__ */ jsxRuntimeExports.jsx(QueryClientProvider, { client: queryClient, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );
