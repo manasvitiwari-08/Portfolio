@@ -204,7 +204,7 @@ export default function Hero() {
                 }}
               >
                 <img
-                  src="https://drive.google.com/uc?export=view&id=1pmINu-yOlgWMyNayKrQZLK-oD0U6CMer"
+                  src="/photo.jpg"
                   alt="Manasvi Tiwari"
                   className="w-full h-full rounded-full object-cover"
                   onError={(e) => {
