@@ -187,7 +187,7 @@ export default function Hero() {
 
           {/* Right: photo */}
           <motion.div variants={item} className="flex-shrink-0">
-            <div className="relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80">
+            <div className="relative w-72 h-72 sm:w-96 sm:h-96 md:w-[420px] md:h-[420px]">
               {/* Subtle glow */}
               <div
                 className="absolute inset-0 rounded-2xl blur-2xl opacity-30"
