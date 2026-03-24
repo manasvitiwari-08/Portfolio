@@ -1,0 +1,4 @@
+src/backend
+scripts
+*.sh
+*.wasm

@@ -2,5 +2,10 @@
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
   "framework": null,
-  "rootDirectory": "src/frontend"
+  "rootDirectory": "src/frontend",
+  "env": {
+    "CANISTER_ID_BACKEND": "aaaaa-aa",
+    "DFX_NETWORK": "ic",
+    "STORAGE_GATEWAY_URL": "https://blob.caffeine.ai"
+  }
 }
